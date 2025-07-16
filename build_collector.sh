@@ -1,6 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
+echo "Starting build_collector.sh..."
+
 # Function to fetch with retries
 fetch_with_retry() {
   local url="$1"
