@@ -95,5 +95,8 @@ download_with_retry "$download_url" "./velociraptor" || exit 1
 chmod +x ./velociraptor
 
 # Run the collector using the workspace configuration file
-mkdir -p ./datastore
+mkdir -p ./datastore/artifact_definitions/Windows/Triage
+wget https://triage.velocidex.com/docs/windows.triage.targets/Windows.Triage.Targets.zip
+unzip -o Windows.Triage.Targets.zip -d ./datastore/artifact_definitions/Windows/Triage
+rm Windows.Triage.Targets.zip
 ./velociraptor collector --datastore ./datastore/ ./config/spec.yaml
