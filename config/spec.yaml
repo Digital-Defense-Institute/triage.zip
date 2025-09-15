@@ -3,7 +3,7 @@ OS: Windows
 
 # The list of artifacts and their args.
 Artifacts:
- Windows.KapeFiles.Targets:
+ Windows.Triage.Targets:
     VSSAnalysisAge: 3
     _KapeTriage: Y
     _SANS_Triage: Y
