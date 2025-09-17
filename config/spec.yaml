@@ -4,7 +4,7 @@ OS: Windows
 # The list of artifacts and their args.
 Artifacts:
  Windows.Triage.Targets:
-    VSSAnalysisAge: 3
+    VSS_MAX_AGE_DAYS: 3
     _KapeTriage: Y
     _SANS_Triage: Y
     _BasicCollection: Y
