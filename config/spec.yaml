@@ -5,7 +5,7 @@ OS: Windows
 Artifacts:
  Windows.Triage.Targets:
     VSS_MAX_AGE_DAYS: 3
-    HighLevelTargets: '["_KapeTriage", "_BasicCollection", "ServerTriage", "_SANS_Triage"]'
+    HighLevelTargets: '["_KapeTriage", "_BasicCollection", "_Live", "_SANS_Triage"]'
  Windows.Sysinternals.Autoruns:
     All: Y
 
