@@ -26,7 +26,7 @@
   Designed to run without network dependencies, the executable facilitates rapid triage on target systems.
 
 - **Pre-configured Response Options:**  
-  Tailored for Windows environments, the spec includes options for valuable artifacts (e.g., Kape Files and Sysinternals Autoruns) to cover a wide range of triage scenarios.
+  Tailored for Windows environments, the spec includes options for valuable artifacts (e.g., KAPE triage targets, SANS triage, live system data, and Sysinternals Autoruns) to cover a wide range of triage scenarios.
 
 ## Usage Instructions
 
@@ -64,7 +64,7 @@ If you wish to customize or build your own version, you can easily fork this rep
 
 - **Understanding KAPE Targets:**  
   The original KAPE Targets can be found [here](https://github.com/EricZimmerman/KapeFiles/tree/master/Targets).
-  The version of the targets used by Velociraptor can be found [here](https://raw.githubusercontent.com/Velocidex/velociraptor/master/artifacts/definitions/Windows/KapeFiles/Targets.yaml).
+  The project uses Windows.Triage.Targets artifact. The underlying KAPE targets can be found [here](https://raw.githubusercontent.com/Velocidex/velociraptor/master/artifacts/definitions/Windows/KapeFiles/Targets.yaml). The Windows.Triage.Targets artifact documentation is available at [triage.velocidex.com](https://triage.velocidex.com).
 
 - **License:**  
   This project is licensed under the [MIT License](LICENSE).

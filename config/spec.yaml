@@ -4,10 +4,10 @@ OS: Windows
 # The list of artifacts and their args.
 Artifacts:
  Windows.Triage.Targets:
-    VSS_MAX_AGE_DAYS: 3
+    VSS_MAX_AGE_DAYS: '3'
     HighLevelTargets: '["_KapeTriage", "_BasicCollection", "_Live", "_SANS_Triage"]'
  Windows.Sysinternals.Autoruns:
-    All: Y
+    All: 'Y'
 
 # Can be ZIP, GCS, S3, Azure, SMBShare, SFTP
 Target: ZIP
@@ -29,7 +29,7 @@ OptPrompt: N
 OptAdmin: Y
 
 # A path to use for the temp file (Blank for system default)
-OptTempdir:
+OptTempdir: ""
 
 # Compression level to use
 OptLevel: 5
