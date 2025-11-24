@@ -13,9 +13,7 @@ Artifacts:
 Target: ZIP
 
 # Relevant args to the Target type above.
-TargetArgs:
-  bucket:
-  GCSKey:
+TargetArgs: {}
 
 # Can be None, X509
 # NOTE: You can unzip the encrypted zip using
