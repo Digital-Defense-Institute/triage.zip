@@ -23,16 +23,75 @@ jobs:
       - name: Set up JQ
         run: sudo apt-get install -y jq
 
+      - name: Check Velociraptor release version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          CURRENT_VERSION="unknown"
+          if [ -f data/velociraptor-version.json ]; then
+            CURRENT_VERSION=$(jq -r '.velociraptor_version // "unknown"' data/velociraptor-version.json)
+          fi
+
+          RESPONSE=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/Velocidex/velociraptor/releases/latest)
+          if [ -z "$RESPONSE" ]; then
+            echo "Error: Unable to fetch Velociraptor release metadata" >&2
+            exit 1
+          fi
+
+          ASSET_NAME=$(echo "$RESPONSE" | jq -r '[.assets[] | select(.name | test("velociraptor-.*-linux-amd64$")) | .name] | sort | last')
+          UPSTREAM_VERSION=$(echo "$ASSET_NAME" | sed -n 's/.*velociraptor-v\([0-9.]*\)-linux-amd64$/\1/p')
+          if [ -z "$UPSTREAM_VERSION" ]; then
+            UPSTREAM_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name' | sed 's/^v//')
+          fi
+
+          if [ -z "$UPSTREAM_VERSION" ] || [ "$UPSTREAM_VERSION" = "null" ]; then
+            echo "Error: Unable to determine upstream Velociraptor version" >&2
+            exit 1
+          fi
+
+          echo "Stored version: $CURRENT_VERSION"
+          echo "Upstream version: $UPSTREAM_VERSION"
+          echo "UPSTREAM_VELO_VERSION=$UPSTREAM_VERSION" >> $GITHUB_ENV
+
+          if [ "$CURRENT_VERSION" = "$UPSTREAM_VERSION" ]; then
+            echo "No new release detected."
+            echo "VELO_VERSION_CHANGED=false" >> $GITHUB_ENV
+          else
+            echo "New release detected."
+            echo "VELO_VERSION_CHANGED=true" >> $GITHUB_ENV
+          fi
+
       - name: Run build script
+        if: env.VELO_VERSION_CHANGED == 'true'
+        env:
+          SKIP_IF_VERSION_UNCHANGED: "1"
         run: bash build_collector.sh
 
+      - name: Commit Velociraptor version metadata
+        if: env.VELO_VERSION_CHANGED == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet data/velociraptor-version.json; then
+            echo "No version metadata changes to commit."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/velociraptor-version.json
+            git commit -m "chore: update Velociraptor version [skip ci]"
+            git push
+          fi
+
       - name: Delete existing latest release
+        if: env.VELO_VERSION_CHANGED == 'true'
         run: |
           gh release delete latest --yes || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Delete old latest tag
+        if: env.VELO_VERSION_CHANGED == 'true'
         run: |
           git tag -d latest || true
           git push --delete origin latest || true
@@ -41,6 +100,7 @@ jobs:
 
 
       - name: Create Latest Release
+        if: env.VELO_VERSION_CHANGED == 'true'
         id: create_latest_release
         uses: actions/create-release@v1
         env:
@@ -52,6 +112,7 @@ jobs:
           prerelease: false
 
       - name: Upload Latest Release Asset
+        if: env.VELO_VERSION_CHANGED == 'true'
         uses: actions/upload-release-asset@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

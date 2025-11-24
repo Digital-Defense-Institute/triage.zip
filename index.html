@@ -8,35 +8,156 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
 </head>
 <body>
+    <div class="background-accent"></div>
     <div class="container">
-        <header>
-            <h1>Triage Collector</h1>
-            <p>A ready-to-go Velociraptor triage collector.</p>
-        </header>
-        <main>
-            <section>
-            <a href="https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector.exe" class="button">Download Collector</a>
-            <div class="instructions">
-                <h2>How to Use the Collector</h2>
-                <ol>
-                    <li>Download the collector to a compromised system.</li>
-                    <li>Run the collector with administrative rights.</li>
-                    <li>Retrieve and process the ZIP file created by the collector.</li>
-                </ol>
+        <header class="hero">
+            <div class="hero-left">
+                <p class="eyebrow"><a href="https://docs.velociraptor.app/" target="_blank" rel="noreferrer noopener">Velociraptor</a> <span class="eyebrow-highlight">Powered</span> • <a href="https://digitaldefenseinstitute.com/" target="_blank" rel="noreferrer noopener">Digital Defense Institute</a> <span class="eyebrow-highlight">Maintained</span></p>
+                <h1>Triage Collector</h1>
+                <p class="lede">A ready-to-run Velociraptor package that collects the evidence responders need without extra setup.</p>
+
+                <div class="hero-actions">
+                    <a href="https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector.exe" class="button primary">Download Collector</a>
+                    <a href="https://github.com/Digital-Defense-Institute/triage.zip" class="button ghost" target="_blank" rel="noreferrer noopener">View on GitHub</a>
+                </div>
             </div>
+            <div class="hero-right">
+                <div class="status-card">
+                    <p class="status-label">Build health</p>
+                    <a href="https://github.com/Digital-Defense-Institute/triage.zip/actions/workflows/ci.yml" target="_blank" rel="noreferrer noopener">
+                        <img src="https://github.com/Digital-Defense-Institute/triage.zip/actions/workflows/ci.yml/badge.svg" alt="Build Status">
+                    </a>
+                    <p class="status-note">Latest workflow run from GitHub Actions</p>
+                </div>
+            </div>
+        </header>
+
+        <section class="hero-details">
+            <div class="detail-card">
+                <span>Platform</span>
+                <p>Windows (x64)</p>
+            </div>
+            <div class="detail-card">
+                <span>Output</span>
+                <p>ZIP evidence archive</p>
+            </div>
+            <div class="detail-card version-card">
+                <span>Velociraptor version</span>
+                <p><span class="version-pill" data-velociraptor-version>Syncing…</span></p>
+            </div>
+        </section>
+
+        <main>
+            <section class="cards-container">
+                <div class="card collection-info">
+                    <h2>What This Collector Gathers</h2>
+                    <p><strong>Artifacts collected:</strong></p>
+                    <ul>
+                        <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/windows.triage.targets/rules/#KapeTriage" target="_blank" rel="noreferrer noopener">KAPE Triage targets</a></li>
+                        <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/windows.triage.targets/rules/#!SANS_Triage" target="_blank" rel="noreferrer noopener">SANS Triage collection</a></li>
+                        <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/windows.triage.targets/rules/#Live" target="_blank" rel="noreferrer noopener">Live system data</a></li>
+                        <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/windows.triage.targets/rules/#!BasicCollection" target="_blank" rel="noreferrer noopener">Basic collection artifacts</a></li>
+                        <li><span class="link-label">Docs</span><a href="https://docs.velociraptor.app/artifact_references/pages/windows.sysinternals.autoruns/" target="_blank" rel="noreferrer noopener">Sysinternals Autoruns analysis</a></li>
+                    </ul>
+                    <p class="muted">Includes Volume Shadow Copy snapshots up to 3 days old.</p>
+                    <div class="tip slim-tip">Would you like to see additional targets added? <a href="https://github.com/Digital-Defense-Institute/triage.zip/issues/new/choose" target="_blank" rel="noreferrer noopener">Open an issue</a> to request them.</div>
+                </div>
+
+                <div class="card instructions">
+                    <h2>How to Use the Collector</h2>
+                    <ol class="steps">
+                        <li>
+                            <span class="step-label">1</span>
+                            <div>
+                                <strong>Download</strong>
+                                <p>Grab the latest release and place it on the host you are triaging.</p>
+                            </div>
+                        </li>
+                        <li>
+                            <span class="step-label">2</span>
+                            <div>
+                                <strong>Collect</strong>
+                                <p>Run the executable with administrative privileges and let it finish.</p>
+                            </div>
+                        </li>
+                        <li>
+                            <span class="step-label">3</span>
+                            <div>
+                                <strong>Extract</strong>
+                                <p>Retrieve the generated ZIP archive for immediate analysis.</p>
+                            </div>
+                        </li>
+                    </ol>
+                    <div class="tip">Need timelines? Convert the triage archive into full forensic timelines using our <a href="https://github.com/Digital-Defense-Institute/openrelik-pipeline" target="_blank" rel="noreferrer noopener">openrelik-pipeline</a>.</div>
+                </div>
+            </section>
+
+            <section class="features">
+                <div class="feature-card">
+                    <div class="icon-circle">
+                        <i class="fa-solid fa-bolt"></i>
+                    </div>
+                    <h3>Fast Deployment</h3>
+                    <p>Single download with pre-packaged artifacts keeps triage moving even during active incidents.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon-circle">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <h3>Defender Friendly</h3>
+                    <p>Predictable behavior and an open build pipeline reduce the friction of running evidence collection on critical hosts.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon-circle">
+                        <i class="fa-solid fa-chart-line"></i>
+                    </div>
+                    <h3>Actionable Output</h3>
+                    <p>Combines live system data with historical snapshots, giving investigators immediate context.</p>
+                </div>
+            </section>
+
+            <section class="cta">
+                <div>
+                    <h2>Need deeper customization?</h2>
+                    <p>Fork the project, tweak the Velociraptor artifacts, and keep your responders aligned with your playbooks.</p>
+                </div>
+                <a href="https://github.com/Digital-Defense-Institute/triage.zip" class="button secondary" target="_blank" rel="noreferrer noopener">Explore the repository</a>
+            </section>
+
+            <section class="course-cta">
+                <div>
+                    <h2>Threat Hunting & Incident Response with Velociraptor</h2>
+                    <p>Hands-on training that dives into the same workflows powering this collector.</p>
+                </div>
+                <a href="https://academy.digitaldefenseinstitute.com/courses/225936b9-6eec-4838-aae4-5dc65274179b" class="button secondary" target="_blank" rel="noreferrer noopener">Explore the course</a>
             </section>
         </main>
-        <p>For more information, visit the source <a href="https://github.com/Digital-Defense-Institute/triage.zip" target="_blank">repository</a> </p>
+
         <footer>
-            <div class="maintainer" style="text-align: center; margin-bottom: 1rem;">
-                Maintained with <i class="fa fa-heart" style="color: rgb(25, 0, 255);" aria-hidden="true"></i> by <a href="https://digitaldefenseinstitute.com/">Digital Defense Institute</a>
-            </div>
+            <p>Maintained with <i class="fa fa-heart" aria-hidden="true"></i> by <a href="https://digitaldefenseinstitute.com/" target="_blank" rel="noreferrer noopener">Digital Defense Institute</a></p>
+            <p class="muted">For more information, visit the source <a href="https://github.com/Digital-Defense-Institute/triage.zip" target="_blank" rel="noreferrer noopener">repository</a>.</p>
             <div class="social-icons">
-                <a href="https://github.com/Digital-Defense-Institute/triage.zip" target="_blank"><i class="fab fa-github fa-2x"></i></a>
-                <a href="https://www.linkedin.com/company/digital-defense-institute/" target="_blank"><i class="fab fa-linkedin fa-2x"></i></a>
-                <a href="https://bsky.app/profile/digitaldefenseinstitute.com" target="_blank"><i class="fab fa-bluesky fa-2x"></i></a>
+                <a href="https://github.com/Digital-Defense-Institute/triage.zip" target="_blank" rel="noreferrer noopener"><i class="fa-brands fa-github fa-2x"></i></a>
+                <a href="https://www.linkedin.com/company/digital-defense-institute/" target="_blank" rel="noreferrer noopener"><i class="fa-brands fa-linkedin fa-2x"></i></a>
+                <a href="https://bsky.app/profile/digitaldefenseinstitute.com" target="_blank" rel="noreferrer noopener"><i class="fa-brands fa-bluesky fa-2x"></i></a>
             </div>
         </footer>
     </div>
+    <noscript>
+        <div class="noscript-warning">Enable JavaScript to display the Velociraptor version currently used in this collector.</div>
+    </noscript>
+    <script>
+    (function() {
+        const placeholders = document.querySelectorAll('[data-velociraptor-version]');
+        const fallback = 'Unknown';
+        fetch('data/velociraptor-version.json', {cache: 'no-cache'})
+            .then(resp => resp.ok ? resp.json() : Promise.reject(resp.status))
+            .then(data => {
+                const version = (data && data.velociraptor_version) ? data.velociraptor_version : fallback;
+                placeholders.forEach(el => el.textContent = version);
+            })
+            .catch(() => placeholders.forEach(el => el.textContent = fallback));
+    })();
+    </script>
 </body>
 </html>

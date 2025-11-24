@@ -45,17 +45,57 @@ if [ -z "$response" ]; then
   exit 1
 fi
 
-# Use jq to extract the browser_download_url for the Linux AMD64 binary
-# Pick the latest version (usually the highest numbered one)
-download_url=$(echo "$response" | jq -r '[.assets[] | select(.name | test("velociraptor-.*-linux-amd64$")) | .browser_download_url] | sort | reverse | .[0]')
+# Identify download URL and derive version from asset name
+asset_info=$(echo "$response" | jq -r '[.assets[] | select(.name | test("velociraptor-.*-linux-amd64$")) | {name: .name, url: .browser_download_url}] | sort_by(.name) | last')
+download_url=$(echo "$asset_info" | jq -r '.url')
+asset_name=$(echo "$asset_info" | jq -r '.name')
 
-# Check if we found a URL
 if [ -z "$download_url" ] || [ "$download_url" == "null" ]; then
   echo "Error: Could not find a Linux AMD64 binary in the latest release" >&2
   echo "Debug - Available assets:" >&2
   echo "$response" | jq -r '.assets[].name' >&2
   exit 1
 fi
+
+binary_version=$(echo "$asset_name" | sed -n 's/.*velociraptor-v\([0-9.]*\)-linux-amd64$/\1/p')
+velociraptor_version=${binary_version:-$(echo "$response" | jq -r '.tag_name' | sed 's/^v//')}
+
+if [ -z "$velociraptor_version" ] || [ "$velociraptor_version" == "null" ]; then
+  echo "Error: Unable to determine Velociraptor version from asset metadata" >&2
+  exit 1
+fi
+
+echo "Velociraptor release version: $velociraptor_version"
+
+# Load previously stored version if available
+stored_version="unknown"
+if [ -f data/velociraptor-version.json ]; then
+  stored_version=$(jq -r '.velociraptor_version // "unknown"' data/velociraptor-version.json 2>/dev/null || echo "unknown")
+fi
+
+if [ -n "${GITHUB_ENV:-}" ]; then
+  echo "VELO_VERSION=$velociraptor_version" >> "$GITHUB_ENV"
+fi
+
+if [ "$stored_version" = "$velociraptor_version" ] && [ -n "${SKIP_IF_VERSION_UNCHANGED:-}" ]; then
+  echo "Velociraptor version unchanged ($velociraptor_version); skipping build."
+  if [ -n "${GITHUB_ENV:-}" ]; then
+    echo "VELO_VERSION_CHANGED=false" >> "$GITHUB_ENV"
+  fi
+  exit 0
+fi
+
+if [ -n "${GITHUB_ENV:-}" ]; then
+  echo "VELO_VERSION_CHANGED=true" >> "$GITHUB_ENV"
+fi
+
+# Update metadata used by the static site
+mkdir -p data
+cat <<EOF > data/velociraptor-version.json
+{
+  "velociraptor_version": "$velociraptor_version"
+}
+EOF
 
 echo "Downloading Velociraptor binary from: $download_url"
 
