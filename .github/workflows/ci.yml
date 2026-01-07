@@ -16,12 +16,12 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up JQ
-        run: sudo apt-get install -y jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
       - name: Check Velociraptor release version
         env:
@@ -62,14 +62,71 @@ jobs:
             echo "VELO_VERSION_CHANGED=true" >> $GITHUB_ENV
           fi
 
+      - name: Check Windows.Triage.Targets version
+        run: |
+          set -euo pipefail
+
+          # Fetch current ETag from HTTP header with retry logic
+          MAX_RETRIES=3
+          RETRY_DELAY=5
+          CURRENT_ETAG=""
+
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "Fetching ETag (attempt $attempt of $MAX_RETRIES)..."
+            HEADERS=$(curl -sI --fail --max-time 30 "https://triage.velocidex.com/artifacts/Windows.Triage.Targets.zip" 2>/dev/null || true)
+            CURRENT_ETAG=$(echo "$HEADERS" | grep -i "^etag:" | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//')
+
+            if [ -n "$CURRENT_ETAG" ]; then
+              break
+            fi
+
+            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+              echo "No ETag received, retrying in ${RETRY_DELAY}s..."
+              sleep $RETRY_DELAY
+            fi
+          done
+
+          # Validate ETag was received
+          if [ -z "$CURRENT_ETAG" ]; then
+            echo "Error: No ETag header received from triage.velocidex.com after $MAX_RETRIES attempts" >&2
+            echo "This may indicate a network issue or server misconfiguration." >&2
+            exit 1
+          fi
+
+          # Load stored ETag
+          STORED_ETAG="unknown"
+          if [ -f data/velociraptor-version.json ]; then
+            STORED_ETAG=$(jq -r '.triage_targets_etag // "unknown"' data/velociraptor-version.json)
+          fi
+
+          echo "Stored triage targets ETag: $STORED_ETAG"
+          echo "Current triage targets ETag: $CURRENT_ETAG"
+
+          # Use heredoc format to safely write ETag to env (prevents injection via malicious ETags)
+          {
+            echo "TRIAGE_ETAG<<EOF"
+            echo "$CURRENT_ETAG"
+            echo "EOF"
+          } >> $GITHUB_ENV
+
+          if [ "$STORED_ETAG" = "$CURRENT_ETAG" ]; then
+            echo "Triage targets unchanged."
+            echo "TRIAGE_TARGETS_CHANGED=false" >> $GITHUB_ENV
+          else
+            echo "Triage targets changed."
+            echo "TRIAGE_TARGETS_CHANGED=true" >> $GITHUB_ENV
+          fi
+
       - name: Run build script
-        if: env.VELO_VERSION_CHANGED == 'true'
+        if: env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true'
         env:
           SKIP_IF_VERSION_UNCHANGED: "1"
+          TRIAGE_ETAG: ${{ env.TRIAGE_ETAG }}
+          TRIAGE_TARGETS_CHANGED: ${{ env.TRIAGE_TARGETS_CHANGED }}
         run: bash build_collector.sh
 
-      - name: Commit Velociraptor version metadata
-        if: env.VELO_VERSION_CHANGED == 'true'
+      - name: Commit version metadata
+        if: env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -79,19 +136,19 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add data/velociraptor-version.json
-            git commit -m "chore: update Velociraptor version [skip ci]"
+            git commit -m "chore: update version metadata [skip ci]"
             git push
           fi
 
       - name: Delete existing latest release
-        if: env.VELO_VERSION_CHANGED == 'true'
+        if: env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true'
         run: |
           gh release delete latest --yes || true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Delete old latest tag
-        if: env.VELO_VERSION_CHANGED == 'true'
+        if: env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true'
         run: |
           git tag -d latest || true
           git push --delete origin latest || true
@@ -100,24 +157,12 @@ jobs:
 
 
       - name: Create Latest Release
-        if: env.VELO_VERSION_CHANGED == 'true'
-        id: create_latest_release
-        uses: actions/create-release@v1
+        if: env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: latest
-          release_name: "Latest Release"
-          draft: false
-          prerelease: false
-
-      - name: Upload Latest Release Asset
-        if: env.VELO_VERSION_CHANGED == 'true'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.create_latest_release.outputs.upload_url }}
-          asset_path: ./datastore/Velociraptor_Triage_Collector.exe
-          asset_name: Velociraptor_Triage_Collector.exe
-          asset_content_type: application/octet-stream
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create latest \
+            ./datastore/Velociraptor_Triage_Collector.exe \
+            --title "Latest Release" \
+            --notes "Built with Velociraptor ${{ env.UPSTREAM_VELO_VERSION }}" \
+            --latest

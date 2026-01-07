@@ -44,6 +44,7 @@
             <div class="detail-card version-card">
                 <span>Velociraptor version</span>
                 <p><span class="version-pill" data-velociraptor-version>Syncing…</span></p>
+                <small class="build-meta" data-last-build>Built: Syncing…</small>
             </div>
         </section>
 
@@ -148,15 +149,38 @@
     </noscript>
     <script>
     (function() {
-        const placeholders = document.querySelectorAll('[data-velociraptor-version]');
-        const fallback = 'Unknown';
+        const versionPlaceholders = document.querySelectorAll('[data-velociraptor-version]');
+        const buildPlaceholders = document.querySelectorAll('[data-last-build]');
+        const versionFallback = 'Unknown';
+        const buildFallback = 'Built: Unknown';
+
         fetch('data/velociraptor-version.json', {cache: 'no-cache'})
             .then(resp => resp.ok ? resp.json() : Promise.reject(resp.status))
             .then(data => {
-                const version = (data && data.velociraptor_version) ? data.velociraptor_version : fallback;
-                placeholders.forEach(el => el.textContent = version);
+                const version = (data && data.velociraptor_version) ? data.velociraptor_version : versionFallback;
+                versionPlaceholders.forEach(el => el.textContent = version);
+
+                if (data && data.last_build_timestamp) {
+                    const buildDate = new Date(data.last_build_timestamp);
+                    if (!Number.isNaN(buildDate.valueOf())) {
+                        const dateStr = buildDate.toLocaleDateString('en-US', {
+                            year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC'
+                        });
+                        const utcHours = String(buildDate.getUTCHours()).padStart(2, '0');
+                        const utcMinutes = String(buildDate.getUTCMinutes()).padStart(2, '0');
+                        const timeStr = utcHours + ':' + utcMinutes;
+                        buildPlaceholders.forEach(el => el.textContent = 'Built: ' + dateStr + ' · ' + timeStr + ' UTC');
+                    } else {
+                        buildPlaceholders.forEach(el => el.textContent = buildFallback);
+                    }
+                } else {
+                    buildPlaceholders.forEach(el => el.textContent = buildFallback);
+                }
             })
-            .catch(() => placeholders.forEach(el => el.textContent = fallback));
+            .catch(() => {
+                versionPlaceholders.forEach(el => el.textContent = versionFallback);
+                buildPlaceholders.forEach(el => el.textContent = buildFallback);
+            });
     })();
     </script>
 </body>
