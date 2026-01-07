@@ -6,13 +6,17 @@
 
 **triage.zip** provides an out-of-the-box Velociraptor triage collector for Windows, pre-configured for rapid and effective incident response. The project is intended for responders who need a reliable offline collector without the hassle of building from scratch.
 
-- **Automated Build and Deployment:**  
+- **Automated Build and Deployment:**
   Every commit to the `main` branch triggers a CI workflow (see [ci.yml](.github/workflows/ci.yml)) which:
-  1. Fetches the latest Velociraptor Linux binary from its official release using a shell script.
-  2. Generates an offline collector using the provided configuration ([spec.yaml](config/spec.yaml)).
-  3. Deploys the collector as a GitHub release for easy download.
-  
-  In addition, a GitHub Action trigger now runs every Monday at 6pm UTC to ensure the collector is always built using the latest Velociraptor release version.
+  1. Checks the latest Velociraptor release version against the currently-built version (tracked in data/velociraptor-version.json).
+  2. If a new version is available, spec.yaml was modified, OR Windows.Triage.Targets was updated, the build proceeds:
+     - Fetches the latest Velociraptor Linux binary from its official release.
+     - Verifies the binary SHA256 checksum matches the official release checksum.
+     - Generates an offline collector using the provided configuration ([spec.yaml](config/spec.yaml)).
+     - Deploys the collector as a GitHub release for easy download.
+  3. If no changes are detected, the build is skipped to avoid unnecessary rebuilds.
+
+  In addition, a scheduled run every Monday at 6pm UTC checks for updates to both the Velociraptor release version and Windows.Triage.Targets artifact.
 
 - **Configuration:**  
   The collector behavior is defined in [spec.yaml](config/spec.yaml), detailing operating system, artifacts, collection parameters, and output settings.
@@ -30,8 +34,15 @@
 
 ## Usage Instructions
 
-1. **Download and Run:**  
-   Download the latest release of the collector [here](https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector.exe) (permalink).  
+1. **Download and Run:**
+   Download the latest release of the collector [here](https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector.exe) (permalink).
+
+   **Security Verification (Recommended):**
+   Verify the SHA256 checksum before running. The expected hash is published in the GitHub release notes. Compare it with:
+   ```powershell
+   Get-FileHash .\Velociraptor_Triage_Collector.exe -Algorithm SHA256
+   ```
+
    **Run the executable as an Administrator** on the target system.
 
 2. **Triage Operation:**  
@@ -51,8 +62,14 @@ If you wish to customize or build your own version, you can easily fork this rep
 - **Configuration:**  
   Adjust collection specifics in [spec.yaml](config/spec.yaml) to suit your needs.
   
-- **Continuous Integration:**  
-  The CI pipeline in [.github/workflows/ci.yml](.github/workflows/ci.yml) orchestrates the build and release process. Commit to `main` to trigger a new build.
+- **Continuous Integration:**
+  The CI pipeline in [.github/workflows/ci.yml](.github/workflows/ci.yml) orchestrates the build and release process. Builds occur conditionally:
+  - When a new Velociraptor version is released
+  - When spec.yaml is modified
+  - When Windows.Triage.Targets artifact is updated (detected via ETag)
+  - On manual workflow dispatch
+
+  The build script detects artifact and version changes that occur during the build process by tracking version state in data/velociraptor-version.json.
 
 ## Further Information
 

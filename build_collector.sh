@@ -77,25 +77,29 @@ if [ -n "${GITHUB_ENV:-}" ]; then
   echo "VELO_VERSION=$velociraptor_version" >> "$GITHUB_ENV"
 fi
 
-if [ "$stored_version" = "$velociraptor_version" ] && [ -n "${SKIP_IF_VERSION_UNCHANGED:-}" ]; then
-  echo "Velociraptor version unchanged ($velociraptor_version); skipping build."
+# Skip build only if BOTH Velociraptor version AND triage targets are unchanged
+if [ "$stored_version" = "$velociraptor_version" ] && [ "${TRIAGE_TARGETS_CHANGED:-false}" != "true" ] && [ -n "${SKIP_IF_VERSION_UNCHANGED:-}" ]; then
+  echo "Velociraptor version unchanged ($velociraptor_version) and triage targets unchanged; skipping build."
   if [ -n "${GITHUB_ENV:-}" ]; then
     echo "VELO_VERSION_CHANGED=false" >> "$GITHUB_ENV"
   fi
   exit 0
 fi
 
+# Log what triggered the build
+if [ "$stored_version" != "$velociraptor_version" ]; then
+  echo "Build triggered: Velociraptor version changed ($stored_version -> $velociraptor_version)"
+fi
+if [ "${TRIAGE_TARGETS_CHANGED:-false}" = "true" ]; then
+  echo "Build triggered: Windows.Triage.Targets artifact changed"
+fi
+
 if [ -n "${GITHUB_ENV:-}" ]; then
   echo "VELO_VERSION_CHANGED=true" >> "$GITHUB_ENV"
 fi
 
-# Update metadata used by the static site
+# Create data directory for metadata (JSON written after artifact download)
 mkdir -p data
-cat <<EOF > data/velociraptor-version.json
-{
-  "velociraptor_version": "$velociraptor_version"
-}
-EOF
 
 echo "Downloading Velociraptor binary from: $download_url"
 
@@ -134,9 +138,86 @@ download_with_retry() {
 download_with_retry "$download_url" "./velociraptor" || exit 1
 chmod +x ./velociraptor
 
-# Run the collector using the workspace configuration file
+# Download and extract Windows.Triage.Targets artifact
 mkdir -p ./datastore/artifact_definitions/Windows/Triage
-wget https://triage.velocidex.com/docs/windows.triage.targets/Windows.Triage.Targets.zip
+ARTIFACT_URL="https://triage.velocidex.com/artifacts/Windows.Triage.Targets.zip"
+echo "Downloading Windows.Triage.Targets artifact..."
+download_with_retry "$ARTIFACT_URL" "Windows.Triage.Targets.zip" || exit 1
+
+# Compute SHA256 hash of downloaded artifact for integrity verification
+ARTIFACT_SHA256=$(sha256sum Windows.Triage.Targets.zip | cut -d' ' -f1)
+echo "Windows.Triage.Targets.zip SHA256: $ARTIFACT_SHA256"
+
+# Re-fetch ETag after download to detect race conditions (artifact changed during build)
+if [ -n "${TRIAGE_ETAG:-}" ]; then
+  POST_DOWNLOAD_HEADERS=$(curl -sI --fail --max-time 30 "$ARTIFACT_URL" 2>/dev/null || true)
+  POST_DOWNLOAD_ETAG=$(echo "$POST_DOWNLOAD_HEADERS" | grep -im1 "^etag:" | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//')
+
+  # Only compare if we successfully retrieved the post-download ETag
+  if [ -z "$POST_DOWNLOAD_ETAG" ]; then
+    echo "Warning: Could not verify ETag after download (HEAD request returned no ETag)" >&2
+    echo "Continuing with SHA256 verification as fallback..." >&2
+  elif [ "$TRIAGE_ETAG" != "$POST_DOWNLOAD_ETAG" ]; then
+    echo "Error: Artifact ETag changed during download (race condition detected)" >&2
+    echo "  Pre-download ETag:  $TRIAGE_ETAG" >&2
+    echo "  Post-download ETag: $POST_DOWNLOAD_ETAG" >&2
+    echo "This indicates the artifact was updated while we were building." >&2
+    echo "Please re-run the build to get the latest version." >&2
+    rm -f Windows.Triage.Targets.zip
+    exit 1
+  else
+    echo "ETag verified: artifact unchanged during download"
+  fi
+fi
+
+# Verify hash against previously stored value (detect tampering if ETag reused)
+if [ -f data/velociraptor-version.json ]; then
+  STORED_SHA256=$(jq -r '.triage_targets_sha256 // ""' data/velociraptor-version.json 2>/dev/null || echo "")
+  STORED_ETAG=$(jq -r '.triage_targets_etag // ""' data/velociraptor-version.json 2>/dev/null || echo "")
+  if [ -n "$STORED_SHA256" ] && [ -n "$STORED_ETAG" ] && [ "$STORED_ETAG" = "${TRIAGE_ETAG:-}" ]; then
+    # Same ETag but different hash = potential tampering
+    if [ "$STORED_SHA256" != "$ARTIFACT_SHA256" ]; then
+      echo "SECURITY WARNING: Hash mismatch detected!" >&2
+      echo "  ETag is unchanged: $STORED_ETAG" >&2
+      echo "  Previous SHA256:   $STORED_SHA256" >&2
+      echo "  Current SHA256:    $ARTIFACT_SHA256" >&2
+      echo "This could indicate artifact tampering or cache inconsistency." >&2
+      echo "Failing build for manual investigation." >&2
+      rm -f Windows.Triage.Targets.zip
+      exit 1
+    fi
+    echo "Hash verified: matches previously stored value"
+  fi
+fi
+
 unzip -o Windows.Triage.Targets.zip -d ./datastore/artifact_definitions/Windows/Triage
 rm Windows.Triage.Targets.zip
+
+# Capture build timestamp in ISO 8601 UTC format
+BUILD_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+# Write metadata JSON using jq for proper escaping (prevents JSON injection)
+echo "Writing build metadata..."
+if [ -n "${TRIAGE_ETAG:-}" ]; then
+  jq -n --arg ver "$velociraptor_version" --arg etag "$TRIAGE_ETAG" --arg sha "$ARTIFACT_SHA256" --arg ts "$BUILD_TIMESTAMP" \
+    '{velociraptor_version: $ver, triage_targets_etag: $etag, triage_targets_sha256: $sha, last_build_timestamp: $ts}' > data/velociraptor-version.json
+else
+  jq -n --arg ver "$velociraptor_version" --arg sha "$ARTIFACT_SHA256" --arg ts "$BUILD_TIMESTAMP" \
+    '{velociraptor_version: $ver, triage_targets_sha256: $sha, last_build_timestamp: $ts}' > data/velociraptor-version.json
+fi
+echo "Metadata written to data/velociraptor-version.json"
+
+# Validate artifact definitions (borrowed from upstream test.yml)
+echo "Validating artifact definitions..."
+ARTIFACT_GLOB="./datastore/artifact_definitions/Windows/Triage/*.yaml"
+if compgen -G "$ARTIFACT_GLOB" > /dev/null; then
+  artifact_files=($ARTIFACT_GLOB)
+  ./velociraptor artifacts verify --builtin -v "${artifact_files[@]}"
+else
+  echo "Error: No artifact definition files found matching $ARTIFACT_GLOB" >&2
+  exit 1
+fi
+
+# Build the collector
+echo "Building collector..."
 ./velociraptor collector --datastore ./datastore/ ./config/spec.yaml
