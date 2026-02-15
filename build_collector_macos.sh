@@ -1,6 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 
+# NOTE: This script downloads darwin-amd64 which requires Rosetta on Apple
+# Silicon. It also depends on the darwin build matching the linux-amd64 release
+# version — if Velocidex publishes a new linux build before the darwin build
+# (as happened with 0.75.6), the older darwin binary may lack VQL features
+# (e.g. parse_yaml schema support) that the collector command requires.
+
 # Check prerequisites
 command -v jq >/dev/null 2>&1 || { echo "Error: jq is required but not installed" >&2; exit 1; }
 
@@ -201,5 +207,10 @@ else
 fi
 echo "Metadata written to data/velociraptor-version.json"
 
-# Run the collector command
+# Build the x64 collector
+echo "Building x64 collector..."
 ./velociraptor collector --datastore ./datastore/ ./config/spec.yaml
+
+# Build the x86 (32-bit) collector using the same datastore
+echo "Building x86 collector..."
+./velociraptor collector --datastore ./datastore/ ./config/spec_x86.yaml
