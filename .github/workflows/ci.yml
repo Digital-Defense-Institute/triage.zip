@@ -121,16 +121,73 @@ jobs:
             echo "TRIAGE_TARGETS_CHANGED=true" >> $GITHUB_ENV
           fi
 
+      - name: Check Linux.Triage.UAC version
+        run: |
+          set -euo pipefail
+
+          # Fetch current ETag from HTTP header with retry logic
+          MAX_RETRIES=3
+          RETRY_DELAY=5
+          CURRENT_ETAG=""
+
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "Fetching Linux artifact ETag (attempt $attempt of $MAX_RETRIES)..."
+            HEADERS=$(curl -sI --fail --max-time 30 "https://triage.velocidex.com/artifacts/Linux.Triage.UAC.zip" 2>/dev/null || true)
+            CURRENT_ETAG=$(echo "$HEADERS" | grep -i "^etag:" | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//')
+
+            if [ -n "$CURRENT_ETAG" ]; then
+              break
+            fi
+
+            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
+              echo "No ETag received, retrying in ${RETRY_DELAY}s..."
+              sleep $RETRY_DELAY
+            fi
+          done
+
+          # Validate ETag was received
+          if [ -z "$CURRENT_ETAG" ]; then
+            echo "Error: No ETag header received from triage.velocidex.com for Linux artifact after $MAX_RETRIES attempts" >&2
+            echo "This may indicate a network issue or server misconfiguration." >&2
+            exit 1
+          fi
+
+          # Load stored ETag
+          STORED_ETAG="unknown"
+          if [ -f data/velociraptor-version.json ]; then
+            STORED_ETAG=$(jq -r '.linux_triage_targets_etag // "unknown"' data/velociraptor-version.json)
+          fi
+
+          echo "Stored Linux triage targets ETag: $STORED_ETAG"
+          echo "Current Linux triage targets ETag: $CURRENT_ETAG"
+
+          # Use heredoc format to safely write ETag to env (prevents injection via malicious ETags)
+          {
+            echo "LINUX_TRIAGE_ETAG<<EOF"
+            echo "$CURRENT_ETAG"
+            echo "EOF"
+          } >> $GITHUB_ENV
+
+          if [ "$STORED_ETAG" = "$CURRENT_ETAG" ]; then
+            echo "Linux triage targets unchanged."
+            echo "LINUX_TRIAGE_TARGETS_CHANGED=false" >> $GITHUB_ENV
+          else
+            echo "Linux triage targets changed."
+            echo "LINUX_TRIAGE_TARGETS_CHANGED=true" >> $GITHUB_ENV
+          fi
+
       - name: Run build script
-        if: env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+        if: env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || env.LINUX_TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         env:
           SKIP_IF_VERSION_UNCHANGED: ${{ (github.event_name != 'pull_request' && github.event_name != 'workflow_dispatch') && '1' || '' }}
           TRIAGE_ETAG: ${{ env.TRIAGE_ETAG }}
           TRIAGE_TARGETS_CHANGED: ${{ env.TRIAGE_TARGETS_CHANGED }}
+          LINUX_TRIAGE_ETAG: ${{ env.LINUX_TRIAGE_ETAG }}
+          LINUX_TRIAGE_TARGETS_CHANGED: ${{ env.LINUX_TRIAGE_TARGETS_CHANGED }}
         run: bash build_collector.sh
 
       - name: Commit version metadata
-        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || env.LINUX_TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -145,14 +202,14 @@ jobs:
           fi
 
       - name: Delete existing latest release
-        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || env.LINUX_TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         run: |
           gh release delete latest --yes || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Delete old latest tag
-        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || env.LINUX_TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         run: |
           git tag -d latest || true
           git push --delete origin latest || true
@@ -161,13 +218,14 @@ jobs:
 
 
       - name: Create Latest Release
-        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || env.LINUX_TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create latest \
             ./datastore/Velociraptor_Triage_Collector.exe \
             ./datastore/Velociraptor_Triage_Collector_x86.exe \
+            ./datastore/Velociraptor_Triage_Collector_Linux \
             --title "Latest Release" \
             --notes "Built with Velociraptor ${{ env.UPSTREAM_VELO_VERSION }}" \
             --latest
