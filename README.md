@@ -35,12 +35,14 @@
 ## Usage Instructions
 
 1. **Download and Run:**
-   Download the latest release of the collector [here](https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector.exe) (permalink).
+   Download the latest release of the collector (permalinks):
+   - [Windows x64 (64-bit)](https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector.exe) — recommended for most systems
+   - [Windows x86 (32-bit)](https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector_x86.exe) — for legacy 32-bit Windows
 
    **Security Verification (Recommended):**
-   Verify the SHA256 checksum before running. The expected hash is published in the GitHub release notes. Compare it with:
+   Verify the SHA256 checksum before running. The expected hash is published in the GitHub release notes. Compare it with the file you downloaded:
    ```powershell
-   Get-FileHash .\Velociraptor_Triage_Collector.exe -Algorithm SHA256
+   Get-FileHash .\<downloaded_filename>.exe -Algorithm SHA256
    ```
 
    **Run the executable as an Administrator** on the target system.

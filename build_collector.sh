@@ -218,6 +218,10 @@ else
   exit 1
 fi
 
-# Build the collector
-echo "Building collector..."
+# Build the x64 collector
+echo "Building x64 collector..."
 ./velociraptor collector --datastore ./datastore/ ./config/spec.yaml
+
+# Build the x86 (32-bit) collector using the same datastore
+echo "Building x86 collector..."
+./velociraptor collector --datastore ./datastore/ ./config/spec_x86.yaml
