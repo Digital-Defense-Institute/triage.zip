@@ -10,6 +10,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
   schedule:
     - cron: '0 18 * * 1'
 
@@ -121,15 +122,15 @@ jobs:
           fi
 
       - name: Run build script
-        if: env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'pull_request'
+        if: env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         env:
-          SKIP_IF_VERSION_UNCHANGED: ${{ github.event_name != 'pull_request' && '1' || '' }}
+          SKIP_IF_VERSION_UNCHANGED: ${{ (github.event_name != 'pull_request' && github.event_name != 'workflow_dispatch') && '1' || '' }}
           TRIAGE_ETAG: ${{ env.TRIAGE_ETAG }}
           TRIAGE_TARGETS_CHANGED: ${{ env.TRIAGE_TARGETS_CHANGED }}
         run: bash build_collector.sh
 
       - name: Commit version metadata
-        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true') && github.ref == 'refs/heads/main'
+        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -144,14 +145,14 @@ jobs:
           fi
 
       - name: Delete existing latest release
-        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true') && github.ref == 'refs/heads/main'
+        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         run: |
           gh release delete latest --yes || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Delete old latest tag
-        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true') && github.ref == 'refs/heads/main'
+        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         run: |
           git tag -d latest || true
           git push --delete origin latest || true
@@ -160,7 +161,7 @@ jobs:
 
 
       - name: Create Latest Release
-        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true') && github.ref == 'refs/heads/main'
+        if: (env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
