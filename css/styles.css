@@ -428,7 +428,8 @@ body {
 }
 
 #tab-windows:checked ~ #panel-windows,
-#tab-linux:checked ~ #panel-linux {
+#tab-linux:checked ~ #panel-linux,
+#tab-macos:checked ~ #panel-macos {
     display: block;
 }
 

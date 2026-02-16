@@ -39,6 +39,20 @@
                                 <span>x64</span>
                             </div>
                         </a>
+                        <a href="https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector_macOS" class="platform-group">
+                            <div class="platform-icon"><i class="fa-brands fa-apple" aria-hidden="true"></i></div>
+                            <div class="platform-info">
+                                <strong>macOS</strong>
+                                <span>Intel x64</span>
+                            </div>
+                        </a>
+                        <a href="https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector_macOS_ARM" class="platform-group">
+                            <div class="platform-icon"><i class="fa-brands fa-apple" aria-hidden="true"></i></div>
+                            <div class="platform-info">
+                                <strong>macOS</strong>
+                                <span>Apple Silicon</span>
+                            </div>
+                        </a>
                     </div>
                     <a href="https://github.com/Digital-Defense-Institute/triage.zip" class="button ghost" target="_blank" rel="noreferrer noopener">View on GitHub</a>
                 </div>
@@ -60,6 +74,7 @@
                 <div class="platform-badges">
                     <span class="platform-badge"><i class="fa-brands fa-windows" aria-hidden="true"></i> Windows</span>
                     <span class="platform-badge"><i class="fa-brands fa-linux" aria-hidden="true"></i> Linux</span>
+                    <span class="platform-badge"><i class="fa-brands fa-apple" aria-hidden="true"></i> macOS</span>
                 </div>
             </div>
             <div class="detail-card">
@@ -85,6 +100,9 @@
                         <input type="radio" name="platform-tab" id="tab-linux">
                         <label for="tab-linux"><i class="fa-brands fa-linux" aria-hidden="true"></i> Linux</label>
 
+                        <input type="radio" name="platform-tab" id="tab-macos">
+                        <label for="tab-macos"><i class="fa-brands fa-apple" aria-hidden="true"></i> macOS</label>
+
                         <div class="tab-panel" id="panel-windows">
                             <ul>
                                 <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/windows.triage.targets/rules/#KapeTriage" target="_blank" rel="noreferrer noopener">KAPE Triage targets</a></li>
@@ -101,6 +119,13 @@
                                 <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/linux.triage.uac/" target="_blank" rel="noreferrer noopener">UAC (Unix-like Artifacts Collector) &mdash; all targets</a></li>
                             </ul>
                             <p class="muted">Collects logs, configs, shell history, browser data, SSH keys, systemd, and 130+ forensic targets.</p>
+                        </div>
+
+                        <div class="tab-panel" id="panel-macos">
+                            <ul>
+                                <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/linux.triage.uac/rules/#macos" target="_blank" rel="noreferrer noopener">UAC (Unix-like Artifacts Collector) &mdash; macOS targets</a></li>
+                            </ul>
+                            <p class="muted">Collects system logs, fseventsd, Unified Logs, Keychain, browser data (Safari, Chrome, Firefox), SSH keys, Photos, TCC permissions, application state, Spotlight, and 80+ macOS-compatible forensic targets.</p>
                         </div>
                     </div>
 

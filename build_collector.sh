@@ -302,3 +302,11 @@ echo "Building Windows x86 collector..."
 # Build the Linux collector using the same datastore
 echo "Building Linux collector..."
 ./velociraptor collector --datastore ./datastore/ ./config/spec_linux.yaml
+
+# Build the macOS x64 collector using the same datastore
+echo "Building macOS x64 collector..."
+./velociraptor collector --datastore ./datastore/ ./config/spec_macos.yaml
+
+# Build the macOS ARM64 collector using the same datastore
+echo "Building macOS ARM64 collector..."
+./velociraptor collector --datastore ./datastore/ ./config/spec_macos_arm.yaml

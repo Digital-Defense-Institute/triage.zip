@@ -226,6 +226,8 @@ jobs:
             ./datastore/Velociraptor_Triage_Collector.exe \
             ./datastore/Velociraptor_Triage_Collector_x86.exe \
             ./datastore/Velociraptor_Triage_Collector_Linux \
+            ./datastore/Velociraptor_Triage_Collector_macOS \
+            ./datastore/Velociraptor_Triage_Collector_macOS_ARM \
             --title "Latest Release" \
             --notes "Built with Velociraptor ${{ env.UPSTREAM_VELO_VERSION }}" \
             --latest
