@@ -1,6 +1,6 @@
 {
-  "velociraptor_version": "0.76.2",
+  "velociraptor_version": "0.76.3",
   "triage_targets_etag": "\"69a3925c-aa8f\"",
   "triage_targets_sha256": "1ce9cc349cd0e3ca5491cb7a815fa8f716fea41af4cd4b20686f4792b0e37ccb",
-  "last_build_timestamp": "2026-04-13T18:24:55Z"
+  "last_build_timestamp": "2026-04-20T18:19:48Z"
 }
