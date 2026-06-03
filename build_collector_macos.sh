@@ -134,9 +134,21 @@ download_with_retry() {
   return 1
 }
 
-# Download Velociraptor binary and make it executable
+# Download Velociraptor binary and make it executable (darwin-amd64 host binary)
 download_with_retry "$download_url" "./velociraptor" || exit 1
 chmod +x ./velociraptor
+
+# Also fetch the darwin-arm64 binary so we can build a self-contained Apple
+# Silicon collector. Both macOS specs resolve to a single "VelociraptorCollector"
+# tool with no default URL, so each arch's binary must be registered before its
+# build or the collector becomes a tiny BYO-binary shell stub.
+darwin_arm64_url=$(echo "$response" | jq -r '[.assets[] | select(.name | test("darwin-arm64$")) | {name: .name, url: .browser_download_url}] | sort_by(.name) | last | .url')
+if [ -z "$darwin_arm64_url" ] || [ "$darwin_arm64_url" == "null" ]; then
+  echo "Error: Could not find a darwin-arm64 binary in the latest release" >&2
+  exit 1
+fi
+echo "Downloading Velociraptor darwin-arm64 binary..."
+download_with_retry "$darwin_arm64_url" "./velociraptor_darwin_arm64" || exit 1
 
 # Download and extract Windows.Triage.Targets artifact
 mkdir -p ./datastore/artifact_definitions/Windows/Triage
@@ -227,10 +239,29 @@ echo "Building Windows x86 collector..."
 echo "Building Linux collector..."
 ./velociraptor collector --datastore ./datastore/ ./config/spec_linux.yaml
 
-# Build the macOS x64 collector using the same datastore
-echo "Building macOS x64 collector..."
-./velociraptor collector --datastore ./datastore/ ./config/spec_macos.yaml
+# Embed the darwin velociraptor binary into each macOS collector. Both specs map
+# to the single "VelociraptorCollector" tool, so register the matching arch's
+# binary into the datastore inventory immediately before each build. "tools
+# upload" works through a server config rather than --datastore, so generate a
+# minimal config pointed at the same ./datastore the collector builds use.
+# (./velociraptor is the darwin-amd64 host binary downloaded above.)
+echo "Generating server config for darwin tool registration..."
+./velociraptor config generate > server.config.yaml
+DATASTORE_ABS="$(pwd)/datastore"
+awk -v ds="$DATASTORE_ABS" '
+  /^Datastore:/ { in_ds = 1 }
+  in_ds && /^  location:/ { print "  location: " ds; next }
+  in_ds && /^  filestore_directory:/ { print "  filestore_directory: " ds; next }
+  /^[A-Za-z]/ && !/^Datastore:/ { in_ds = 0 }
+  { print }
+' server.config.yaml > server.config.yaml.tmp && mv server.config.yaml.tmp server.config.yaml
 
-# Build the macOS ARM64 collector using the same datastore
-echo "Building macOS ARM64 collector..."
+# Build the macOS ARM64 collector (embed darwin-arm64 binary)
+echo "Registering darwin-arm64 binary and building macOS ARM64 collector..."
+./velociraptor --config server.config.yaml tools upload --name VelociraptorCollector --download ./velociraptor_darwin_arm64
 ./velociraptor collector --datastore ./datastore/ ./config/spec_macos_arm.yaml
+
+# Build the macOS x64 collector (re-point VelociraptorCollector to darwin-amd64)
+echo "Registering darwin-amd64 binary and building macOS x64 collector..."
+./velociraptor --config server.config.yaml tools upload --name VelociraptorCollector --download ./velociraptor
+./velociraptor collector --datastore ./datastore/ ./config/spec_macos.yaml
