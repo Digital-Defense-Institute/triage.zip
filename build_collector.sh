@@ -124,8 +124,8 @@ if [ -n "${TRIAGE_ETAG:-}" ]; then
   if [ -z "$POST_DOWNLOAD_ETAG" ]; then
     echo "Warning: Could not verify ETag after download (HEAD request returned no ETag)" >&2
     echo "Continuing with SHA256 verification as fallback..." >&2
-  elif [ "$TRIAGE_ETAG" != "$POST_DOWNLOAD_ETAG" ]; then
-    echo "Error: Artifact ETag changed during download (race condition detected)" >&2
+  elif [ "$(etag_content_id "$TRIAGE_ETAG")" != "$(etag_content_id "$POST_DOWNLOAD_ETAG")" ]; then
+    echo "Error: Artifact content changed during download (race condition detected)" >&2
     echo "  Pre-download ETag:  $TRIAGE_ETAG" >&2
     echo "  Post-download ETag: $POST_DOWNLOAD_ETAG" >&2
     echo "This indicates the artifact was updated while we were building." >&2
@@ -133,7 +133,7 @@ if [ -n "${TRIAGE_ETAG:-}" ]; then
     rm -f Windows.Triage.Targets.zip
     exit 1
   else
-    echo "ETag verified: artifact unchanged during download"
+    echo "ETag verified: artifact content unchanged during download"
   fi
 fi
 
@@ -178,8 +178,8 @@ if [ -n "${LINUX_TRIAGE_ETAG:-}" ]; then
   if [ -z "$POST_DOWNLOAD_ETAG" ]; then
     echo "Warning: Could not verify Linux artifact ETag after download (HEAD request returned no ETag)" >&2
     echo "Continuing with SHA256 verification as fallback..." >&2
-  elif [ "$LINUX_TRIAGE_ETAG" != "$POST_DOWNLOAD_ETAG" ]; then
-    echo "Error: Linux artifact ETag changed during download (race condition detected)" >&2
+  elif [ "$(etag_content_id "$LINUX_TRIAGE_ETAG")" != "$(etag_content_id "$POST_DOWNLOAD_ETAG")" ]; then
+    echo "Error: Linux artifact content changed during download (race condition detected)" >&2
     echo "  Pre-download ETag:  $LINUX_TRIAGE_ETAG" >&2
     echo "  Post-download ETag: $POST_DOWNLOAD_ETAG" >&2
     echo "This indicates the artifact was updated while we were building." >&2
@@ -187,7 +187,7 @@ if [ -n "${LINUX_TRIAGE_ETAG:-}" ]; then
     rm -f Linux.Triage.UAC.zip
     exit 1
   else
-    echo "Linux artifact ETag verified: artifact unchanged during download"
+    echo "Linux artifact ETag verified: artifact content unchanged during download"
   fi
 fi
 

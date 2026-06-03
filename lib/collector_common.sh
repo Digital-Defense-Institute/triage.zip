@@ -80,6 +80,21 @@ asset_url_by_name() {
   echo "$json" | jq -r --arg n "$name" '.assets[] | select(.name == $n) | .browser_download_url'
 }
 
+# Extract the content-identifying part of an nginx/S3-style ETag. These servers
+# emit ETags of the form "<mtime-hex>-<content-length-hex>"; the mtime prefix can
+# differ between CDN edge nodes (or after a no-op touch) for byte-identical
+# content, which would otherwise trip the download race-condition guard with a
+# false positive. Comparing only the content-length field tolerates that wobble
+# while still catching a real size-changing swap mid-download (and the stored
+# SHA256 check still guards same-length tampering). Strips a weak-validator W/
+# prefix and quotes; with no '-' it returns the whole de-quoted value so a
+# non-standard ETag still compares exactly.
+etag_content_id() {
+  local etag="${1#W/}"
+  etag="${etag//\"/}"
+  printf '%s' "${etag##*-}"
+}
+
 # Verify a built collector is a real self-contained binary, not the ~100KB
 # BYO-binary shell stub the offline-collector builder emits when an embedded tool
 # fails to resolve. Requires BOTH a sane size (>= 10MB; real collectors embed a

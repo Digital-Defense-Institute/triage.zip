@@ -113,8 +113,8 @@ if [ -n "${TRIAGE_ETAG:-}" ]; then
   if [ -z "$POST_DOWNLOAD_ETAG" ]; then
     echo "Warning: Could not verify ETag after download (HEAD request returned no ETag)" >&2
     echo "Continuing with SHA256 verification as fallback..." >&2
-  elif [ "$TRIAGE_ETAG" != "$POST_DOWNLOAD_ETAG" ]; then
-    echo "Error: Artifact ETag changed during download (race condition detected)" >&2
+  elif [ "$(etag_content_id "$TRIAGE_ETAG")" != "$(etag_content_id "$POST_DOWNLOAD_ETAG")" ]; then
+    echo "Error: Artifact content changed during download (race condition detected)" >&2
     echo "  Pre-download ETag:  $TRIAGE_ETAG" >&2
     echo "  Post-download ETag: $POST_DOWNLOAD_ETAG" >&2
     echo "This indicates the artifact was updated while we were building." >&2
@@ -122,7 +122,7 @@ if [ -n "${TRIAGE_ETAG:-}" ]; then
     rm -f Windows.Triage.Targets.zip
     exit 1
   else
-    echo "ETag verified: artifact unchanged during download"
+    echo "ETag verified: artifact content unchanged during download"
   fi
 fi
 
