@@ -45,8 +45,16 @@ if [ -z "$response" ]; then
   exit 1
 fi
 
-# Identify download URL and derive version from asset name
-asset_info=$(echo "$response" | jq -r '[.assets[] | select(.name | test("velociraptor-.*-linux-amd64$")) | {name: .name, url: .browser_download_url}] | sort_by(.name) | last')
+# Identify download URL and derive version from asset name. Sort by the PARSED
+# numeric version (not lexicographically) so v0.76.10 correctly outranks v0.76.5
+# — the "latest" release contains many patch versions as separate assets.
+asset_info=$(echo "$response" | jq -r '
+  [.assets[]
+   | select(.name | test("velociraptor-v[0-9.]+-linux-amd64$"))
+   | {name: .name,
+      url: .browser_download_url,
+      ver: (.name | capture("velociraptor-v(?<v>[0-9]+(\\.[0-9]+)*)-linux-amd64$").v | split(".") | map(tonumber))}]
+  | sort_by(.ver) | last')
 download_url=$(echo "$asset_info" | jq -r '.url')
 asset_name=$(echo "$asset_info" | jq -r '.name')
 
@@ -135,6 +143,30 @@ download_with_retry() {
   
   echo "Error: Failed to download binary after $max_retries attempts" >&2
   return 1
+}
+
+# Verify a built collector is a real self-contained binary, not the ~100KB
+# BYO-binary shell stub the offline-collector builder emits when an embedded
+# tool fails to resolve. Checks both size and that the file is a compiled
+# executable (PE/ELF/Mach-O) rather than a shell script / text. Applied to every
+# released collector, not just macOS — any spec can stub out the same way.
+verify_collector_not_stub() {
+  local f="$1"
+  local min_bytes=10000000
+  local size ftype
+  size=$(wc -c < "$f")
+  ftype=$(file -b "$f")
+  if [ "$size" -lt "$min_bytes" ]; then
+    echo "Error: $f is $size bytes (< $min_bytes) — looks like a BYO-binary stub, not a self-contained collector" >&2
+    exit 1
+  fi
+  case "$ftype" in
+    *"shell script"*|*"text"*)
+      echo "Error: $f is '$ftype' — expected a compiled executable, got a script/text (stub?)" >&2
+      exit 1
+      ;;
+  esac
+  echo "Verified self-contained collector: $f ($size bytes, $ftype)"
 }
 
 # Download Velociraptor binary and make it executable
@@ -318,14 +350,17 @@ fi
 # Build the x64 collector
 echo "Building Windows x64 collector..."
 ./velociraptor collector --datastore ./datastore/ ./config/spec.yaml
+verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector.exe
 
 # Build the x86 (32-bit) collector using the same datastore
 echo "Building Windows x86 collector..."
 ./velociraptor collector --datastore ./datastore/ ./config/spec_x86.yaml
+verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector_x86.exe
 
 # Build the Linux collector using the same datastore
 echo "Building Linux collector..."
 ./velociraptor collector --datastore ./datastore/ ./config/spec_linux.yaml
+verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector_Linux
 
 # The macOS collectors need the darwin velociraptor binary embedded. Both the
 # MacOS and MacOSArm specs resolve to the single "VelociraptorCollector" tool,
@@ -333,22 +368,6 @@ echo "Building Linux collector..."
 # before building each arch (re-pointing the tool between builds). "tools upload"
 # operates through a server config rather than --datastore, so generate a minimal
 # config whose datastore points at the same ./datastore the collector builds use.
-# A self-contained macOS collector embeds the ~60-70MB darwin binary. If the
-# tool registration silently fails (e.g. the config rewrite below didn't take or
-# the tool name changed upstream), the builder falls back to a ~100KB BYO-binary
-# shell stub. Fail the build rather than ship a stub (the original bug class).
-verify_collector_not_stub() {
-  local f="$1"
-  local min_bytes=10000000
-  local size
-  size=$(wc -c < "$f")
-  if [ "$size" -lt "$min_bytes" ]; then
-    echo "Error: $f is $size bytes (< $min_bytes) — looks like a BYO-binary stub, not a self-contained collector" >&2
-    exit 1
-  fi
-  echo "Verified self-contained collector: $f ($size bytes)"
-}
-
 echo "Generating server config for darwin tool registration..."
 ./velociraptor config generate > server.config.yaml
 DATASTORE_ABS="$(pwd)/datastore"
