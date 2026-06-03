@@ -142,9 +142,13 @@ chmod +x ./velociraptor
 # Silicon collector. Both macOS specs resolve to a single "VelociraptorCollector"
 # tool with no default URL, so each arch's binary must be registered before its
 # build or the collector becomes a tiny BYO-binary shell stub.
-darwin_arm64_url=$(echo "$response" | jq -r '[.assets[] | select(.name | test("darwin-arm64$")) | {name: .name, url: .browser_download_url}] | sort_by(.name) | last | .url')
+# Pin to the EXACT host version ($velociraptor_version, derived from the
+# darwin-amd64 host binary) via an exact name match rather than a lexicographic
+# sort_by(.name)|last — this picks the right patch and fails loud on per-arch
+# version skew instead of embedding a mismatched, version-bound binary.
+darwin_arm64_url=$(echo "$response" | jq -r --arg n "velociraptor-v${velociraptor_version}-darwin-arm64" '.assets[] | select(.name == $n) | .browser_download_url')
 if [ -z "$darwin_arm64_url" ] || [ "$darwin_arm64_url" == "null" ]; then
-  echo "Error: Could not find a darwin-arm64 binary in the latest release" >&2
+  echo "Error: darwin-arm64 binary for v${velociraptor_version} not found in the latest release (host is darwin-amd64 v${velociraptor_version}; per-arch version skew?)" >&2
   exit 1
 fi
 echo "Downloading Velociraptor darwin-arm64 binary..."
@@ -245,6 +249,21 @@ echo "Building Linux collector..."
 # upload" works through a server config rather than --datastore, so generate a
 # minimal config pointed at the same ./datastore the collector builds use.
 # (./velociraptor is the darwin-amd64 host binary downloaded above.)
+# A self-contained macOS collector embeds the ~60-70MB darwin binary. If the
+# tool registration silently fails, the builder falls back to a ~100KB
+# BYO-binary shell stub. Fail the build rather than ship a stub.
+verify_collector_not_stub() {
+  local f="$1"
+  local min_bytes=10000000
+  local size
+  size=$(wc -c < "$f")
+  if [ "$size" -lt "$min_bytes" ]; then
+    echo "Error: $f is $size bytes (< $min_bytes) — looks like a BYO-binary stub, not a self-contained collector" >&2
+    exit 1
+  fi
+  echo "Verified self-contained collector: $f ($size bytes)"
+}
+
 echo "Generating server config for darwin tool registration..."
 ./velociraptor config generate > server.config.yaml
 DATASTORE_ABS="$(pwd)/datastore"
@@ -256,12 +275,22 @@ awk -v ds="$DATASTORE_ABS" '
   { print }
 ' server.config.yaml > server.config.yaml.tmp && mv server.config.yaml.tmp server.config.yaml
 
+# Confirm the rewrite actually pointed the datastore at ./datastore, otherwise
+# "tools upload" would target the default datastore and the build would silently
+# emit a stub.
+if ! grep -qF "location: ${DATASTORE_ABS}" server.config.yaml; then
+  echo "Error: server.config.yaml Datastore was not repointed to ${DATASTORE_ABS} (velociraptor config format may have changed)" >&2
+  exit 1
+fi
+
 # Build the macOS ARM64 collector (embed darwin-arm64 binary)
 echo "Registering darwin-arm64 binary and building macOS ARM64 collector..."
 ./velociraptor --config server.config.yaml tools upload --name VelociraptorCollector --download ./velociraptor_darwin_arm64
 ./velociraptor collector --datastore ./datastore/ ./config/spec_macos_arm.yaml
+verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector_macOS_ARM
 
 # Build the macOS x64 collector (re-point VelociraptorCollector to darwin-amd64)
 echo "Registering darwin-amd64 binary and building macOS x64 collector..."
 ./velociraptor --config server.config.yaml tools upload --name VelociraptorCollector --download ./velociraptor
 ./velociraptor collector --datastore ./datastore/ ./config/spec_macos.yaml
+verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector_macOS

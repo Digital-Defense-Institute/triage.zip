@@ -1,2 +1,11 @@
 # Claude AI configuration
 CLAUDE.md
+
+# Build artifacts: downloaded Velociraptor binaries, the build datastore, and the
+# generated server config (contains self-signed private keys — never commit).
+/velociraptor
+/velociraptor_darwin_amd64
+/velociraptor_darwin_arm64
+/server.config.yaml
+/server.config.yaml.tmp
+/datastore/
