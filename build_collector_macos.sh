@@ -193,24 +193,44 @@ fi
 unzip -o Windows.Triage.Targets.zip -d ./datastore/artifact_definitions/Windows/Triage
 rm Windows.Triage.Targets.zip
 
+# Download and extract Linux.Triage.UAC artifact
+mkdir -p ./datastore/artifact_definitions/Linux/Triage
+LINUX_ARTIFACT_URL="https://triage.velocidex.com/artifacts/Linux.Triage.UAC.zip"
+echo "Downloading Linux.Triage.UAC artifact..."
+download_with_retry "$LINUX_ARTIFACT_URL" "Linux.Triage.UAC.zip" || exit 1
+
+# Compute SHA256 hash of downloaded Linux artifact for integrity verification (macOS uses shasum)
+LINUX_ARTIFACT_SHA256=$(shasum -a 256 Linux.Triage.UAC.zip | cut -d' ' -f1)
+echo "Linux.Triage.UAC.zip SHA256: $LINUX_ARTIFACT_SHA256"
+
+unzip -o Linux.Triage.UAC.zip -d ./datastore/artifact_definitions/Linux/Triage
+rm Linux.Triage.UAC.zip
+
 # Capture build timestamp in ISO 8601 UTC format
 BUILD_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Write metadata JSON using jq for proper escaping (prevents JSON injection)
 echo "Writing build metadata..."
-if [ -n "${TRIAGE_ETAG:-}" ]; then
-  jq -n --arg ver "$velociraptor_version" --arg etag "$TRIAGE_ETAG" --arg sha "$ARTIFACT_SHA256" --arg ts "$BUILD_TIMESTAMP" \
-    '{velociraptor_version: $ver, triage_targets_etag: $etag, triage_targets_sha256: $sha, last_build_timestamp: $ts}' > data/velociraptor-version.json
-else
-  jq -n --arg ver "$velociraptor_version" --arg sha "$ARTIFACT_SHA256" --arg ts "$BUILD_TIMESTAMP" \
-    '{velociraptor_version: $ver, triage_targets_sha256: $sha, last_build_timestamp: $ts}' > data/velociraptor-version.json
-fi
+jq -n --arg ver "$velociraptor_version" --arg sha "$ARTIFACT_SHA256" --arg linux_sha "$LINUX_ARTIFACT_SHA256" --arg ts "$BUILD_TIMESTAMP" \
+  '{velociraptor_version: $ver, triage_targets_sha256: $sha, linux_triage_targets_sha256: $linux_sha, last_build_timestamp: $ts}' > data/velociraptor-version.json
 echo "Metadata written to data/velociraptor-version.json"
 
-# Build the x64 collector
-echo "Building x64 collector..."
+# Build the Windows x64 collector
+echo "Building Windows x64 collector..."
 ./velociraptor collector --datastore ./datastore/ ./config/spec.yaml
 
-# Build the x86 (32-bit) collector using the same datastore
-echo "Building x86 collector..."
+# Build the Windows x86 (32-bit) collector using the same datastore
+echo "Building Windows x86 collector..."
 ./velociraptor collector --datastore ./datastore/ ./config/spec_x86.yaml
+
+# Build the Linux collector using the same datastore
+echo "Building Linux collector..."
+./velociraptor collector --datastore ./datastore/ ./config/spec_linux.yaml
+
+# Build the macOS x64 collector using the same datastore
+echo "Building macOS x64 collector..."
+./velociraptor collector --datastore ./datastore/ ./config/spec_macos.yaml
+
+# Build the macOS ARM64 collector using the same datastore
+echo "Building macOS ARM64 collector..."
+./velociraptor collector --datastore ./datastore/ ./config/spec_macos_arm.yaml

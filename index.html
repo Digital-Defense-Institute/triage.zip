@@ -17,8 +17,43 @@
                 <p class="lede">A ready-to-run Velociraptor package that collects the evidence responders need without extra setup.</p>
 
                 <div class="hero-actions">
-                    <a href="https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector.exe" class="button primary"><i class="fa-brands fa-windows" aria-hidden="true"></i>&nbsp; Download Collector (x64)</a>
-                    <a href="https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector_x86.exe" class="button ghost"><i class="fa-brands fa-windows" aria-hidden="true"></i>&nbsp; Download Collector (x86)</a>
+                    <div class="platform-downloads">
+                        <a href="https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector.exe" class="platform-group">
+                            <div class="platform-icon"><i class="fa-brands fa-windows" aria-hidden="true"></i></div>
+                            <div class="platform-info">
+                                <strong>Windows</strong>
+                                <span>x64</span>
+                            </div>
+                        </a>
+                        <a href="https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector_x86.exe" class="platform-group">
+                            <div class="platform-icon"><i class="fa-brands fa-windows" aria-hidden="true"></i></div>
+                            <div class="platform-info">
+                                <strong>Windows</strong>
+                                <span>x86</span>
+                            </div>
+                        </a>
+                        <a href="https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector_Linux" class="platform-group">
+                            <div class="platform-icon"><i class="fa-brands fa-linux" aria-hidden="true"></i></div>
+                            <div class="platform-info">
+                                <strong>Linux</strong>
+                                <span>x64</span>
+                            </div>
+                        </a>
+                        <a href="https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector_macOS" class="platform-group">
+                            <div class="platform-icon"><i class="fa-brands fa-apple" aria-hidden="true"></i></div>
+                            <div class="platform-info">
+                                <strong>macOS</strong>
+                                <span>Intel x64</span>
+                            </div>
+                        </a>
+                        <a href="https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector_macOS_ARM" class="platform-group">
+                            <div class="platform-icon"><i class="fa-brands fa-apple" aria-hidden="true"></i></div>
+                            <div class="platform-info">
+                                <strong>macOS</strong>
+                                <span>Apple Silicon</span>
+                            </div>
+                        </a>
+                    </div>
                     <a href="https://github.com/Digital-Defense-Institute/triage.zip" class="button ghost" target="_blank" rel="noreferrer noopener">View on GitHub</a>
                 </div>
             </div>
@@ -35,8 +70,12 @@
 
         <section class="hero-details">
             <div class="detail-card">
-                <span>Platform</span>
-                <p>Windows (x64 / x86)</p>
+                <span>Platforms</span>
+                <div class="platform-badges">
+                    <span class="platform-badge"><i class="fa-brands fa-windows" aria-hidden="true"></i> Windows</span>
+                    <span class="platform-badge"><i class="fa-brands fa-linux" aria-hidden="true"></i> Linux</span>
+                    <span class="platform-badge"><i class="fa-brands fa-apple" aria-hidden="true"></i> macOS</span>
+                </div>
             </div>
             <div class="detail-card">
                 <span>Output</span>
@@ -53,15 +92,43 @@
             <section class="cards-container">
                 <div class="card collection-info">
                     <h2>What This Collector Gathers</h2>
-                    <p><strong>Artifacts collected:</strong></p>
-                    <ul>
-                        <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/windows.triage.targets/rules/#KapeTriage" target="_blank" rel="noreferrer noopener">KAPE Triage targets</a></li>
-                        <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/windows.triage.targets/rules/#!SANS_Triage" target="_blank" rel="noreferrer noopener">SANS Triage collection</a></li>
-                        <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/windows.triage.targets/rules/#Live" target="_blank" rel="noreferrer noopener">Live system data</a></li>
-                        <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/windows.triage.targets/rules/#!BasicCollection" target="_blank" rel="noreferrer noopener">Basic collection artifacts</a></li>
-                        <li><span class="link-label">Docs</span><a href="https://docs.velociraptor.app/artifact_references/pages/windows.sysinternals.autoruns/" target="_blank" rel="noreferrer noopener">Sysinternals Autoruns analysis</a></li>
-                    </ul>
-                    <p class="muted">Includes Volume Shadow Copy snapshots up to 3 days old.</p>
+
+                    <div class="artifact-tabs">
+                        <input type="radio" name="platform-tab" id="tab-windows" checked>
+                        <label for="tab-windows"><i class="fa-brands fa-windows" aria-hidden="true"></i> Windows</label>
+
+                        <input type="radio" name="platform-tab" id="tab-linux">
+                        <label for="tab-linux"><i class="fa-brands fa-linux" aria-hidden="true"></i> Linux</label>
+
+                        <input type="radio" name="platform-tab" id="tab-macos">
+                        <label for="tab-macos"><i class="fa-brands fa-apple" aria-hidden="true"></i> macOS</label>
+
+                        <div class="tab-panel" id="panel-windows">
+                            <ul>
+                                <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/windows.triage.targets/rules/#KapeTriage" target="_blank" rel="noreferrer noopener">KAPE Triage targets</a></li>
+                                <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/windows.triage.targets/rules/#!SANS_Triage" target="_blank" rel="noreferrer noopener">SANS Triage collection</a></li>
+                                <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/windows.triage.targets/rules/#Live" target="_blank" rel="noreferrer noopener">Live system data</a></li>
+                                <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/windows.triage.targets/rules/#!BasicCollection" target="_blank" rel="noreferrer noopener">Basic collection artifacts</a></li>
+                                <li><span class="link-label">Docs</span><a href="https://docs.velociraptor.app/artifact_references/pages/windows.sysinternals.autoruns/" target="_blank" rel="noreferrer noopener">Sysinternals Autoruns analysis</a></li>
+                            </ul>
+                            <p class="muted">Includes Volume Shadow Copy snapshots up to 3 days old.</p>
+                        </div>
+
+                        <div class="tab-panel" id="panel-linux">
+                            <ul>
+                                <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/linux.triage.uac/" target="_blank" rel="noreferrer noopener">UAC (Unix-like Artifacts Collector) &mdash; all targets</a></li>
+                            </ul>
+                            <p class="muted">Collects logs, configs, shell history, browser data, SSH keys, systemd, and 130+ forensic targets.</p>
+                        </div>
+
+                        <div class="tab-panel" id="panel-macos">
+                            <ul>
+                                <li><span class="link-label">Docs</span><a href="https://triage.velocidex.com/docs/linux.triage.uac/rules/#macos" target="_blank" rel="noreferrer noopener">UAC (Unix-like Artifacts Collector) &mdash; macOS targets</a></li>
+                            </ul>
+                            <p class="muted">Collects system logs, fseventsd, Unified Logs, Keychain, browser data (Safari, Chrome, Firefox), SSH keys, Photos, TCC permissions, application state, Spotlight, and 80+ macOS-compatible forensic targets.</p>
+                        </div>
+                    </div>
+
                     <div class="tip slim-tip">Would you like to see additional targets added? <a href="https://github.com/Digital-Defense-Institute/triage.zip/issues/new/choose" target="_blank" rel="noreferrer noopener">Open an issue</a> to request them.</div>
                 </div>
 
@@ -72,14 +139,14 @@
                             <span class="step-label">1</span>
                             <div>
                                 <strong>Download</strong>
-                                <p>Grab the latest release and place it on the host you are triaging.</p>
+                                <p>Grab the latest release for your platform and place it on the target host.</p>
                             </div>
                         </li>
                         <li>
                             <span class="step-label">2</span>
                             <div>
                                 <strong>Collect</strong>
-                                <p>Run the executable with administrative privileges and let it finish.</p>
+                                <p>Run the collector with elevated privileges (admin/root) and let it finish.</p>
                             </div>
                         </li>
                         <li>
