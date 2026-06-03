@@ -9,3 +9,6 @@ CLAUDE.md
 /server.config.yaml
 /server.config.yaml.tmp
 /datastore/
+
+# macOS directory metadata
+.DS_Store

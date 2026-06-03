@@ -12,38 +12,11 @@ command -v jq >/dev/null 2>&1 || { echo "Error: jq is required but not installed
 
 echo "Starting build_collector.sh (macOS version)..."
 
-# Function to fetch with retries
-fetch_with_retry() {
-  local url="$1"
-  local max_retries=3
-  local retry_delay=2
-  local attempt=1
-
-  while [ $attempt -le $max_retries ]; do
-    if [ $attempt -gt 1 ]; then
-      echo "Fetching from GitHub API (attempt $attempt/$max_retries)..." >&2
-    fi
-    response=$(curl -s -L "$url" || true)
-
-    # Check if we got valid JSON
-    if echo "$response" | jq -e . >/dev/null 2>&1; then
-      echo "$response"
-      return 0
-    fi
-
-    if [ $attempt -lt $max_retries ]; then
-      echo "Request failed, retrying in ${retry_delay}s..." >&2
-      sleep $retry_delay
-      retry_delay=$((retry_delay * 2))  # Exponential backoff
-    fi
-
-    attempt=$((attempt + 1))
-  done
-
-  echo "Error: Failed to fetch valid JSON from GitHub API after $max_retries attempts" >&2
-  echo "Debug - Last response received: ${response:0:200}..." >&2
-  return 1
-}
+# Shared helpers: fetch/download retries, version-aware asset selection, and the
+# stub verification run after every collector build.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/collector_common.sh
+. "$SCRIPT_DIR/lib/collector_common.sh"
 
 # Fetch the latest Velociraptor release information from GitHub API
 response=$(fetch_with_retry "https://api.github.com/repos/Velocidex/velociraptor/releases/latest") || exit 1
@@ -54,14 +27,8 @@ if [ -z "$response" ]; then
   exit 1
 fi
 
-# Identify download URL and derive version from asset name
-asset_info=$(echo "$response" | jq -r '
-  [.assets[]
-   | select(.name | test("velociraptor-v[0-9.]+-darwin-amd64$"))
-   | {name: .name,
-      url: .browser_download_url,
-      ver: (.name | capture("velociraptor-v(?<v>[0-9]+(\\.[0-9]+)*)-darwin-amd64$").v | split(".") | map(tonumber))}]
-  | sort_by(.ver) | last')
+# Identify the darwin-amd64 host binary (highest numeric version).
+asset_info=$(select_velociraptor_asset "$response" "darwin-amd64")
 download_url=$(echo "$asset_info" | jq -r '.url')
 asset_name=$(echo "$asset_info" | jq -r '.name')
 
@@ -109,61 +76,6 @@ mkdir -p data
 
 echo "Downloading Velociraptor binary from: $download_url"
 
-# Download with retries
-download_with_retry() {
-  local url="$1"
-  local output="$2"
-  local max_retries=3
-  local retry_delay=2
-  local attempt=1
-
-  while [ $attempt -le $max_retries ]; do
-    if [ $attempt -gt 1 ]; then
-      echo "Downloading binary (attempt $attempt/$max_retries)..." >&2
-    fi
-    if curl -L "$url" -o "$output" --fail --silent --show-error; then
-      echo "Download successful"
-      return 0
-    fi
-
-    if [ $attempt -lt $max_retries ]; then
-      echo "Download failed, retrying in ${retry_delay}s..." >&2
-      rm -f "$output"  # Clean up partial download
-      sleep $retry_delay
-      retry_delay=$((retry_delay * 2))  # Exponential backoff
-    fi
-
-    attempt=$((attempt + 1))
-  done
-
-  echo "Error: Failed to download binary after $max_retries attempts" >&2
-  return 1
-}
-
-# Verify a built collector is a real self-contained binary, not the ~100KB
-# BYO-binary shell stub the offline-collector builder emits when an embedded
-# tool fails to resolve. Checks both size and that the file is a compiled
-# executable (PE/ELF/Mach-O) rather than a shell script / text. Applied to every
-# released collector, not just macOS — any spec can stub out the same way.
-verify_collector_not_stub() {
-  local f="$1"
-  local min_bytes=10000000
-  local size ftype
-  size=$(wc -c < "$f")
-  ftype=$(file -b "$f")
-  if [ "$size" -lt "$min_bytes" ]; then
-    echo "Error: $f is $size bytes (< $min_bytes) — looks like a BYO-binary stub, not a self-contained collector" >&2
-    exit 1
-  fi
-  case "$ftype" in
-    *"shell script"*|*"text"*)
-      echo "Error: $f is '$ftype' — expected a compiled executable, got a script/text (stub?)" >&2
-      exit 1
-      ;;
-  esac
-  echo "Verified self-contained collector: $f ($size bytes, $ftype)"
-}
-
 # Download Velociraptor binary and make it executable (darwin-amd64 host binary)
 download_with_retry "$download_url" "./velociraptor" || exit 1
 chmod +x ./velociraptor
@@ -171,12 +83,10 @@ chmod +x ./velociraptor
 # Also fetch the darwin-arm64 binary so we can build a self-contained Apple
 # Silicon collector. Both macOS specs resolve to a single "VelociraptorCollector"
 # tool with no default URL, so each arch's binary must be registered before its
-# build or the collector becomes a tiny BYO-binary shell stub.
-# Pin to the EXACT host version ($velociraptor_version, derived from the
-# darwin-amd64 host binary) via an exact name match rather than a lexicographic
-# sort_by(.name)|last — this picks the right patch and fails loud on per-arch
-# version skew instead of embedding a mismatched, version-bound binary.
-darwin_arm64_url=$(echo "$response" | jq -r --arg n "velociraptor-v${velociraptor_version}-darwin-arm64" '.assets[] | select(.name == $n) | .browser_download_url')
+# build or the collector becomes a tiny BYO-binary shell stub. Pin to the EXACT
+# host version (an exact name match) so per-arch version skew fails loud instead
+# of embedding a mismatched, version-bound binary.
+darwin_arm64_url=$(asset_url_by_name "$response" "velociraptor-v${velociraptor_version}-darwin-arm64")
 if [ -z "$darwin_arm64_url" ] || [ "$darwin_arm64_url" == "null" ]; then
   echo "Error: darwin-arm64 binary for v${velociraptor_version} not found in the latest release (host is darwin-amd64 v${velociraptor_version}; per-arch version skew?)" >&2
   exit 1

@@ -43,14 +43,10 @@ jobs:
             exit 1
           fi
 
-          # Sort by parsed numeric version (not lexicographically) so v0.76.10
-          # outranks v0.76.5; must match build_collector.sh's host selection.
-          ASSET_NAME=$(echo "$RESPONSE" | jq -r '
-            [.assets[]
-             | select(.name | test("velociraptor-v[0-9.]+-linux-amd64$"))
-             | {name: .name,
-                ver: (.name | capture("velociraptor-v(?<v>[0-9]+(\\.[0-9]+)*)-linux-amd64$").v | split(".") | map(tonumber))}]
-            | sort_by(.ver) | last | .name')
+          # Select the upstream version with the SAME helper build_collector.sh
+          # uses, so the (numeric, not lexicographic) selection lives in one place.
+          source ./lib/collector_common.sh
+          ASSET_NAME=$(select_velociraptor_asset "$RESPONSE" "linux-amd64" | jq -r '.name // empty')
           UPSTREAM_VERSION=$(echo "$ASSET_NAME" | sed -n 's/.*velociraptor-v\([0-9.]*\)-linux-amd64$/\1/p')
           if [ -z "$UPSTREAM_VERSION" ]; then
             UPSTREAM_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name' | sed 's/^v//')
