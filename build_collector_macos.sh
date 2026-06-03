@@ -12,38 +12,11 @@ command -v jq >/dev/null 2>&1 || { echo "Error: jq is required but not installed
 
 echo "Starting build_collector.sh (macOS version)..."
 
-# Function to fetch with retries
-fetch_with_retry() {
-  local url="$1"
-  local max_retries=3
-  local retry_delay=2
-  local attempt=1
-
-  while [ $attempt -le $max_retries ]; do
-    if [ $attempt -gt 1 ]; then
-      echo "Fetching from GitHub API (attempt $attempt/$max_retries)..." >&2
-    fi
-    response=$(curl -s -L "$url" || true)
-
-    # Check if we got valid JSON
-    if echo "$response" | jq -e . >/dev/null 2>&1; then
-      echo "$response"
-      return 0
-    fi
-
-    if [ $attempt -lt $max_retries ]; then
-      echo "Request failed, retrying in ${retry_delay}s..." >&2
-      sleep $retry_delay
-      retry_delay=$((retry_delay * 2))  # Exponential backoff
-    fi
-
-    attempt=$((attempt + 1))
-  done
-
-  echo "Error: Failed to fetch valid JSON from GitHub API after $max_retries attempts" >&2
-  echo "Debug - Last response received: ${response:0:200}..." >&2
-  return 1
-}
+# Shared helpers: fetch/download retries, version-aware asset selection, and the
+# stub verification run after every collector build.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/collector_common.sh
+. "$SCRIPT_DIR/lib/collector_common.sh"
 
 # Fetch the latest Velociraptor release information from GitHub API
 response=$(fetch_with_retry "https://api.github.com/repos/Velocidex/velociraptor/releases/latest") || exit 1
@@ -54,8 +27,8 @@ if [ -z "$response" ]; then
   exit 1
 fi
 
-# Identify download URL and derive version from asset name
-asset_info=$(echo "$response" | jq -r '[.assets[] | select(.name | test("velociraptor-.*-darwin-amd64$")) | {name: .name, url: .browser_download_url}] | sort_by(.name) | last')
+# Identify the darwin-amd64 host binary (highest numeric version).
+asset_info=$(select_velociraptor_asset "$response" "darwin-amd64")
 download_url=$(echo "$asset_info" | jq -r '.url')
 asset_name=$(echo "$asset_info" | jq -r '.name')
 
@@ -103,40 +76,23 @@ mkdir -p data
 
 echo "Downloading Velociraptor binary from: $download_url"
 
-# Download with retries
-download_with_retry() {
-  local url="$1"
-  local output="$2"
-  local max_retries=3
-  local retry_delay=2
-  local attempt=1
-
-  while [ $attempt -le $max_retries ]; do
-    if [ $attempt -gt 1 ]; then
-      echo "Downloading binary (attempt $attempt/$max_retries)..." >&2
-    fi
-    if curl -L "$url" -o "$output" --fail --silent --show-error; then
-      echo "Download successful"
-      return 0
-    fi
-
-    if [ $attempt -lt $max_retries ]; then
-      echo "Download failed, retrying in ${retry_delay}s..." >&2
-      rm -f "$output"  # Clean up partial download
-      sleep $retry_delay
-      retry_delay=$((retry_delay * 2))  # Exponential backoff
-    fi
-
-    attempt=$((attempt + 1))
-  done
-
-  echo "Error: Failed to download binary after $max_retries attempts" >&2
-  return 1
-}
-
-# Download Velociraptor binary and make it executable
+# Download Velociraptor binary and make it executable (darwin-amd64 host binary)
 download_with_retry "$download_url" "./velociraptor" || exit 1
 chmod +x ./velociraptor
+
+# Also fetch the darwin-arm64 binary so we can build a self-contained Apple
+# Silicon collector. Both macOS specs resolve to a single "VelociraptorCollector"
+# tool with no default URL, so each arch's binary must be registered before its
+# build or the collector becomes a tiny BYO-binary shell stub. Pin to the EXACT
+# host version (an exact name match) so per-arch version skew fails loud instead
+# of embedding a mismatched, version-bound binary.
+darwin_arm64_url=$(asset_url_by_name "$response" "velociraptor-v${velociraptor_version}-darwin-arm64")
+if [ -z "$darwin_arm64_url" ] || [ "$darwin_arm64_url" == "null" ]; then
+  echo "Error: darwin-arm64 binary for v${velociraptor_version} not found in the latest release (host is darwin-amd64 v${velociraptor_version}; per-arch version skew?)" >&2
+  exit 1
+fi
+echo "Downloading Velociraptor darwin-arm64 binary..."
+download_with_retry "$darwin_arm64_url" "./velociraptor_darwin_arm64" || exit 1
 
 # Download and extract Windows.Triage.Targets artifact
 mkdir -p ./datastore/artifact_definitions/Windows/Triage
@@ -218,19 +174,51 @@ echo "Metadata written to data/velociraptor-version.json"
 # Build the Windows x64 collector
 echo "Building Windows x64 collector..."
 ./velociraptor collector --datastore ./datastore/ ./config/spec.yaml
+verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector.exe
 
 # Build the Windows x86 (32-bit) collector using the same datastore
 echo "Building Windows x86 collector..."
 ./velociraptor collector --datastore ./datastore/ ./config/spec_x86.yaml
+verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector_x86.exe
 
 # Build the Linux collector using the same datastore
 echo "Building Linux collector..."
 ./velociraptor collector --datastore ./datastore/ ./config/spec_linux.yaml
+verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector_Linux
 
-# Build the macOS x64 collector using the same datastore
-echo "Building macOS x64 collector..."
-./velociraptor collector --datastore ./datastore/ ./config/spec_macos.yaml
+# Embed the darwin velociraptor binary into each macOS collector. Both specs map
+# to the single "VelociraptorCollector" tool, so register the matching arch's
+# binary into the datastore inventory immediately before each build. "tools
+# upload" works through a server config rather than --datastore, so generate a
+# minimal config pointed at the same ./datastore the collector builds use.
+# (./velociraptor is the darwin-amd64 host binary downloaded above.)
+echo "Generating server config for darwin tool registration..."
+./velociraptor config generate > server.config.yaml
+DATASTORE_ABS="$(pwd)/datastore"
+awk -v ds="$DATASTORE_ABS" '
+  /^Datastore:/ { in_ds = 1 }
+  in_ds && /^  location:/ { print "  location: " ds; next }
+  in_ds && /^  filestore_directory:/ { print "  filestore_directory: " ds; next }
+  /^[A-Za-z]/ && !/^Datastore:/ { in_ds = 0 }
+  { print }
+' server.config.yaml > server.config.yaml.tmp && mv server.config.yaml.tmp server.config.yaml
 
-# Build the macOS ARM64 collector using the same datastore
-echo "Building macOS ARM64 collector..."
+# Confirm the rewrite actually pointed the datastore at ./datastore, otherwise
+# "tools upload" would target the default datastore and the build would silently
+# emit a stub.
+if ! grep -qF "location: ${DATASTORE_ABS}" server.config.yaml; then
+  echo "Error: server.config.yaml Datastore was not repointed to ${DATASTORE_ABS} (velociraptor config format may have changed)" >&2
+  exit 1
+fi
+
+# Build the macOS ARM64 collector (embed darwin-arm64 binary)
+echo "Registering darwin-arm64 binary and building macOS ARM64 collector..."
+./velociraptor --config server.config.yaml tools upload --name VelociraptorCollector --download ./velociraptor_darwin_arm64
 ./velociraptor collector --datastore ./datastore/ ./config/spec_macos_arm.yaml
+verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector_macOS_ARM
+
+# Build the macOS x64 collector (re-point VelociraptorCollector to darwin-amd64)
+echo "Registering darwin-amd64 binary and building macOS x64 collector..."
+./velociraptor --config server.config.yaml tools upload --name VelociraptorCollector --download ./velociraptor
+./velociraptor collector --datastore ./datastore/ ./config/spec_macos.yaml
+verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector_macOS

@@ -43,7 +43,10 @@ jobs:
             exit 1
           fi
 
-          ASSET_NAME=$(echo "$RESPONSE" | jq -r '[.assets[] | select(.name | test("velociraptor-.*-linux-amd64$")) | .name] | sort | last')
+          # Select the upstream version with the SAME helper build_collector.sh
+          # uses, so the (numeric, not lexicographic) selection lives in one place.
+          source ./lib/collector_common.sh
+          ASSET_NAME=$(select_velociraptor_asset "$RESPONSE" "linux-amd64" | jq -r '.name // empty')
           UPSTREAM_VERSION=$(echo "$ASSET_NAME" | sed -n 's/.*velociraptor-v\([0-9.]*\)-linux-amd64$/\1/p')
           if [ -z "$UPSTREAM_VERSION" ]; then
             UPSTREAM_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name' | sed 's/^v//')
