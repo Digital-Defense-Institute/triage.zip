@@ -80,6 +80,54 @@ asset_url_by_name() {
   echo "$json" | jq -r --arg n "$name" '.assets[] | select(.name == $n) | .browser_download_url'
 }
 
+# Extract the content-identifying part of an nginx/S3-style ETag. These servers
+# emit ETags of the form "<mtime-hex>-<content-length-hex>" (optionally with a
+# content-coding suffix like "-gzip"); the mtime prefix can differ between CDN
+# edge nodes (or after a no-op touch) for byte-identical content, which would
+# otherwise trip change-detection and the download race-guard with a false
+# positive. We return the content-length field — the SECOND hyphen-delimited
+# field — so a trailing "-gzip" (or any extra suffix) does not shift which field
+# is read. With no hyphen the whole de-quoted value is returned so a non-standard
+# ETag still compares exactly.
+etag_content_id() {
+  local etag="${1#W/}"   # drop weak-validator prefix
+  etag="${etag//\"/}"    # drop quotes
+  local rest="${etag#*-}"     # strip the mtime field (everything up to first '-')
+  printf '%s' "${rest%%-*}"   # keep the content-length field (up to the next '-')
+}
+
+# Detect whether an artifact was republished (swapped for different content)
+# between the pre-download HEAD — whose ETag is $3 — and now, i.e. a release
+# raced our build. download_with_retry already guarantees the bytes are complete
+# (curl --fail errors on a short read vs Content-Length and retries), so this
+# only re-reads the ETag and compares its content-length field, which is
+# mtime-wobble tolerant (see etag_content_id). This is best-effort: a republish
+# that keeps the exact byte length is not detectable from HTTP metadata (no
+# server content hash), and the stored-SHA256 check elsewhere only fires when the
+# ETag is unchanged across builds, so it does not backstop a mid-build republish
+# either. If the post-download HEAD yields no ETag (transient/redirect), degrade
+# gracefully rather than fail.
+# The trailing `|| true` keeps the no-match grep from aborting under pipefail.
+# Args: <url> <file> <pre_download_etag> <label>. rm's <file> and exits 1 on a race.
+verify_download_not_raced() {
+  local url="$1" file="$2" pre_etag="$3" label="$4"
+  local post_etag
+  post_etag=$(curl -sI --fail --max-time 30 "$url" 2>/dev/null | grep -im1 '^etag:' | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//' || true)
+  if [ -z "$post_etag" ]; then
+    echo "Warning: could not re-fetch $label ETag after download; relying on the completed download + SHA256 checks" >&2
+    return 0
+  fi
+  if [ "$(etag_content_id "$pre_etag")" != "$(etag_content_id "$post_etag")" ]; then
+    echo "Error: $label content changed during download (race condition detected)" >&2
+    echo "  Pre-download ETag:  $pre_etag" >&2
+    echo "  Post-download ETag: $post_etag" >&2
+    echo "Please re-run the build to get the latest version." >&2
+    rm -f "$file"
+    exit 1
+  fi
+  echo "$label download verified: content unchanged during download"
+}
+
 # Verify a built collector is a real self-contained binary, not the ~100KB
 # BYO-binary shell stub the offline-collector builder emits when an embedded tool
 # fails to resolve. Requires BOTH a sane size (>= 10MB; real collectors embed a

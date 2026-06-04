@@ -115,26 +115,10 @@ download_with_retry "$ARTIFACT_URL" "Windows.Triage.Targets.zip" || exit 1
 ARTIFACT_SHA256=$(sha256sum Windows.Triage.Targets.zip | cut -d' ' -f1)
 echo "Windows.Triage.Targets.zip SHA256: $ARTIFACT_SHA256"
 
-# Re-fetch ETag after download to detect race conditions (artifact changed during build)
+# Detect a mid-build republish (release raced our build); curl already ensured
+# the download itself is complete.
 if [ -n "${TRIAGE_ETAG:-}" ]; then
-  POST_DOWNLOAD_HEADERS=$(curl -sI --fail --max-time 30 "$ARTIFACT_URL" 2>/dev/null || true)
-  POST_DOWNLOAD_ETAG=$(echo "$POST_DOWNLOAD_HEADERS" | grep -im1 "^etag:" | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//')
-
-  # Only compare if we successfully retrieved the post-download ETag
-  if [ -z "$POST_DOWNLOAD_ETAG" ]; then
-    echo "Warning: Could not verify ETag after download (HEAD request returned no ETag)" >&2
-    echo "Continuing with SHA256 verification as fallback..." >&2
-  elif [ "$TRIAGE_ETAG" != "$POST_DOWNLOAD_ETAG" ]; then
-    echo "Error: Artifact ETag changed during download (race condition detected)" >&2
-    echo "  Pre-download ETag:  $TRIAGE_ETAG" >&2
-    echo "  Post-download ETag: $POST_DOWNLOAD_ETAG" >&2
-    echo "This indicates the artifact was updated while we were building." >&2
-    echo "Please re-run the build to get the latest version." >&2
-    rm -f Windows.Triage.Targets.zip
-    exit 1
-  else
-    echo "ETag verified: artifact unchanged during download"
-  fi
+  verify_download_not_raced "$ARTIFACT_URL" "Windows.Triage.Targets.zip" "$TRIAGE_ETAG" "Windows.Triage.Targets"
 fi
 
 # Verify hash against previously stored value (detect tampering if ETag reused)
@@ -170,25 +154,10 @@ download_with_retry "$LINUX_ARTIFACT_URL" "Linux.Triage.UAC.zip" || exit 1
 LINUX_ARTIFACT_SHA256=$(sha256sum Linux.Triage.UAC.zip | cut -d' ' -f1)
 echo "Linux.Triage.UAC.zip SHA256: $LINUX_ARTIFACT_SHA256"
 
-# Re-fetch ETag after download to detect race conditions (artifact changed during build)
+# Detect a mid-build republish (release raced our build); curl already ensured
+# the download itself is complete.
 if [ -n "${LINUX_TRIAGE_ETAG:-}" ]; then
-  POST_DOWNLOAD_HEADERS=$(curl -sI --fail --max-time 30 "$LINUX_ARTIFACT_URL" 2>/dev/null || true)
-  POST_DOWNLOAD_ETAG=$(echo "$POST_DOWNLOAD_HEADERS" | grep -im1 "^etag:" | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//')
-
-  if [ -z "$POST_DOWNLOAD_ETAG" ]; then
-    echo "Warning: Could not verify Linux artifact ETag after download (HEAD request returned no ETag)" >&2
-    echo "Continuing with SHA256 verification as fallback..." >&2
-  elif [ "$LINUX_TRIAGE_ETAG" != "$POST_DOWNLOAD_ETAG" ]; then
-    echo "Error: Linux artifact ETag changed during download (race condition detected)" >&2
-    echo "  Pre-download ETag:  $LINUX_TRIAGE_ETAG" >&2
-    echo "  Post-download ETag: $POST_DOWNLOAD_ETAG" >&2
-    echo "This indicates the artifact was updated while we were building." >&2
-    echo "Please re-run the build to get the latest version." >&2
-    rm -f Linux.Triage.UAC.zip
-    exit 1
-  else
-    echo "Linux artifact ETag verified: artifact unchanged during download"
-  fi
+  verify_download_not_raced "$LINUX_ARTIFACT_URL" "Linux.Triage.UAC.zip" "$LINUX_TRIAGE_ETAG" "Linux.Triage.UAC"
 fi
 
 # Verify Linux artifact hash against previously stored value (detect tampering if ETag reused)

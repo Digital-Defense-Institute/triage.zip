@@ -116,6 +116,11 @@ jobs:
             echo "EOF"
           } >> $GITHUB_ENV
 
+          # Change-detection compares the FULL ETag on purpose: it errs toward
+          # rebuilding. A benign CDN mtime wobble may trigger a harmless extra
+          # rebuild, but a real (even same-length) artifact change is never
+          # missed. (The build's download race guard is the opposite — it is
+          # mtime-tolerant to avoid failing a good build on a wobble.)
           if [ "$STORED_ETAG" = "$CURRENT_ETAG" ]; then
             echo "Triage targets unchanged."
             echo "TRIAGE_TARGETS_CHANGED=false" >> $GITHUB_ENV
@@ -171,6 +176,8 @@ jobs:
             echo "EOF"
           } >> $GITHUB_ENV
 
+          # Full-ETag comparison on purpose — errs toward rebuilding so a real
+          # change is never missed (see the Windows step).
           if [ "$STORED_ETAG" = "$CURRENT_ETAG" ]; then
             echo "Linux triage targets unchanged."
             echo "LINUX_TRIAGE_TARGETS_CHANGED=false" >> $GITHUB_ENV
