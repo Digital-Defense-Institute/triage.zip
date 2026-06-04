@@ -115,7 +115,8 @@ download_with_retry "$ARTIFACT_URL" "Windows.Triage.Targets.zip" || exit 1
 ARTIFACT_SHA256=$(sha256sum Windows.Triage.Targets.zip | cut -d' ' -f1)
 echo "Windows.Triage.Targets.zip SHA256: $ARTIFACT_SHA256"
 
-# Detect a truncated/raced download against the server's current state.
+# Detect a mid-build republish (release raced our build); curl already ensured
+# the download itself is complete.
 if [ -n "${TRIAGE_ETAG:-}" ]; then
   verify_download_not_raced "$ARTIFACT_URL" "Windows.Triage.Targets.zip" "$TRIAGE_ETAG" "Windows.Triage.Targets"
 fi
@@ -153,7 +154,8 @@ download_with_retry "$LINUX_ARTIFACT_URL" "Linux.Triage.UAC.zip" || exit 1
 LINUX_ARTIFACT_SHA256=$(sha256sum Linux.Triage.UAC.zip | cut -d' ' -f1)
 echo "Linux.Triage.UAC.zip SHA256: $LINUX_ARTIFACT_SHA256"
 
-# Detect a truncated/raced download against the server's current state.
+# Detect a mid-build republish (release raced our build); curl already ensured
+# the download itself is complete.
 if [ -n "${LINUX_TRIAGE_ETAG:-}" ]; then
   verify_download_not_raced "$LINUX_ARTIFACT_URL" "Linux.Triage.UAC.zip" "$LINUX_TRIAGE_ETAG" "Linux.Triage.UAC"
 fi

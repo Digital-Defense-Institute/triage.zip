@@ -104,7 +104,8 @@ download_with_retry "$ARTIFACT_URL" "Windows.Triage.Targets.zip" || exit 1
 ARTIFACT_SHA256=$(shasum -a 256 Windows.Triage.Targets.zip | cut -d' ' -f1)
 echo "Windows.Triage.Targets.zip SHA256: $ARTIFACT_SHA256"
 
-# Detect a truncated/raced download against the server's current state.
+# Detect a mid-build republish (release raced our build); curl already ensured
+# the download itself is complete.
 if [ -n "${TRIAGE_ETAG:-}" ]; then
   verify_download_not_raced "$ARTIFACT_URL" "Windows.Triage.Targets.zip" "$TRIAGE_ETAG" "Windows.Triage.Targets"
 fi
