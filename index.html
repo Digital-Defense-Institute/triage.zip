@@ -134,30 +134,100 @@
 
                 <div class="card instructions">
                     <h2>How to Use the Collector</h2>
-                    <ol class="steps">
-                        <li>
-                            <span class="step-label">1</span>
-                            <div>
-                                <strong>Download</strong>
-                                <p>Grab the latest release for your platform and place it on the target host.</p>
-                            </div>
-                        </li>
-                        <li>
-                            <span class="step-label">2</span>
-                            <div>
-                                <strong>Collect</strong>
-                                <p>Run the collector with elevated privileges (admin/root) and let it finish.</p>
-                            </div>
-                        </li>
-                        <li>
-                            <span class="step-label">3</span>
-                            <div>
-                                <strong>Extract</strong>
-                                <p>Retrieve the generated ZIP archive for immediate analysis.</p>
-                            </div>
-                        </li>
-                    </ol>
-                    <div class="tip slim-tip"><i class="fa-brands fa-apple" aria-hidden="true"></i> <strong>macOS:</strong> downloaded collectors are quarantined by Gatekeeper and may report &ldquo;damaged.&rdquo; Clear the quarantine flag, then run with <code>sudo</code>:<br><code>xattr -d com.apple.quarantine Velociraptor_Triage_Collector_macOS_ARM</code></div>
+
+                    <div class="artifact-tabs">
+                        <input type="radio" name="howto-tab" id="howto-windows" checked>
+                        <label for="howto-windows"><i class="fa-brands fa-windows" aria-hidden="true"></i> Windows</label>
+
+                        <input type="radio" name="howto-tab" id="howto-linux">
+                        <label for="howto-linux"><i class="fa-brands fa-linux" aria-hidden="true"></i> Linux</label>
+
+                        <input type="radio" name="howto-tab" id="howto-macos">
+                        <label for="howto-macos"><i class="fa-brands fa-apple" aria-hidden="true"></i> macOS</label>
+
+                        <div class="tab-panel" id="howto-panel-windows">
+                            <ol class="steps">
+                                <li>
+                                    <span class="step-label">1</span>
+                                    <div>
+                                        <strong>Download</strong>
+                                        <p>Grab <code>Velociraptor_Triage_Collector.exe</code> (or the x86 build for 32-bit hosts) and copy it to the target.</p>
+                                    </div>
+                                </li>
+                                <li>
+                                    <span class="step-label">2</span>
+                                    <div>
+                                        <strong>Run as Administrator</strong>
+                                        <p>Right-click &rarr; <em>Run as administrator</em>, or launch it from an elevated PowerShell / Command Prompt, and let it finish.</p>
+                                    </div>
+                                </li>
+                                <li>
+                                    <span class="step-label">3</span>
+                                    <div>
+                                        <strong>Collect the archive</strong>
+                                        <p>Retrieve the generated <code>Triage-&lt;host&gt;-&lt;timestamp&gt;.zip</code> for analysis.</p>
+                                    </div>
+                                </li>
+                            </ol>
+                        </div>
+
+                        <div class="tab-panel" id="howto-panel-linux">
+                            <ol class="steps">
+                                <li>
+                                    <span class="step-label">1</span>
+                                    <div>
+                                        <strong>Download</strong>
+                                        <p>Grab <code>Velociraptor_Triage_Collector_Linux</code> and copy it to the target host.</p>
+                                    </div>
+                                </li>
+                                <li>
+                                    <span class="step-label">2</span>
+                                    <div>
+                                        <strong>Make executable &amp; run</strong>
+                                        <p>Mark it executable and run it with <code>sudo</code>:</p>
+                                        <code class="cmd">chmod +x Velociraptor_Triage_Collector_Linux
+sudo ./Velociraptor_Triage_Collector_Linux</code>
+                                    </div>
+                                </li>
+                                <li>
+                                    <span class="step-label">3</span>
+                                    <div>
+                                        <strong>Collect the archive</strong>
+                                        <p>Retrieve the generated <code>Triage-&lt;host&gt;-&lt;timestamp&gt;.zip</code> for analysis.</p>
+                                    </div>
+                                </li>
+                            </ol>
+                        </div>
+
+                        <div class="tab-panel" id="howto-panel-macos">
+                            <ol class="steps">
+                                <li>
+                                    <span class="step-label">1</span>
+                                    <div>
+                                        <strong>Download</strong>
+                                        <p>Grab <code>Velociraptor_Triage_Collector_macOS</code> (Intel) or <code>Velociraptor_Triage_Collector_macOS_ARM</code> (Apple Silicon).</p>
+                                    </div>
+                                </li>
+                                <li>
+                                    <span class="step-label">2</span>
+                                    <div>
+                                        <strong>Clear quarantine &amp; run</strong>
+                                        <p>Browser downloads are quarantined by Gatekeeper and may report &ldquo;damaged.&rdquo; Clear the flag, then run with <code>sudo</code>:</p>
+                                        <code class="cmd">xattr -d com.apple.quarantine Velociraptor_Triage_Collector_macOS_ARM
+sudo ./Velociraptor_Triage_Collector_macOS_ARM</code>
+                                    </div>
+                                </li>
+                                <li>
+                                    <span class="step-label">3</span>
+                                    <div>
+                                        <strong>Collect the archive</strong>
+                                        <p>Retrieve the generated <code>Triage-&lt;host&gt;-&lt;timestamp&gt;.zip</code> for analysis.</p>
+                                    </div>
+                                </li>
+                            </ol>
+                        </div>
+                    </div>
+
                     <div class="tip">Need timelines? Convert the triage archive into full forensic timelines using our <a href="https://github.com/Digital-Defense-Institute/openrelik-pipeline" target="_blank" rel="noreferrer noopener">openrelik-pipeline</a>.</div>
                 </div>
             </section>
