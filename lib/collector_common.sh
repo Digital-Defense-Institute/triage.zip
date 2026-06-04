@@ -96,35 +96,23 @@ etag_content_id() {
   printf '%s' "${rest%%-*}"   # keep the content-length field (up to the next '-')
 }
 
-# Verify a freshly downloaded artifact is consistent with the server's current
-# state: it was not truncated and was not swapped for a different-length object
-# between the pre-download HEAD (whose ETag is $3) and now. Re-HEADs $1 and
-# checks (a) the on-disk byte size equals the server's current Content-Length —
-# ground truth, catching a truncated/partial download — and (b) the ETag
-# content-length field is unchanged vs the pre-download ETag, catching a
-# mid-download swap. A same-length content swap cannot be detected from HTTP
-# metadata alone (the server exposes no content hash); the separate stored-SHA256
-# reuse check is the only content-level guard and is best-effort.
-# Args: <url> <file> <pre_download_etag> <label>. rm's <file> and exits 1 on mismatch.
+# Detect whether an artifact was republished (swapped for different content)
+# between the pre-download HEAD — whose ETag is $3 — and now, i.e. a release
+# raced our build. download_with_retry already guarantees the bytes are complete
+# (curl --fail errors on a short read vs Content-Length and retries), so this
+# only re-reads the ETag and compares its content-length field, which is
+# mtime-wobble tolerant (see etag_content_id). A same-byte-length content swap
+# cannot be detected from HTTP metadata (no server content hash); the separate
+# stored-SHA256 reuse check is the only content-level guard. If the post-download
+# HEAD yields no ETag (transient/redirect), degrade gracefully rather than fail.
+# The trailing `|| true` keeps the no-match grep from aborting under pipefail.
+# Args: <url> <file> <pre_download_etag> <label>. rm's <file> and exits 1 on a race.
 verify_download_not_raced() {
   local url="$1" file="$2" pre_etag="$3" label="$4"
-  local headers post_etag content_length file_size
-  headers=$(curl -sI --fail --max-time 30 "$url" 2>/dev/null || true)
-  post_etag=$(printf '%s\n' "$headers" | grep -im1 '^etag:' | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//')
-  content_length=$(printf '%s\n' "$headers" | grep -im1 '^content-length:' | tr -d '\r' | sed 's/^[Cc]ontent-[Ll]ength: *//')
-  file_size=$(wc -c < "$file" | tr -d '[:space:]')
-
-  # (a) Ground-truth size check: on-disk bytes vs the server's advertised length.
-  if [ -n "$content_length" ] && [ "$file_size" != "$content_length" ]; then
-    echo "Error: $label downloaded $file_size bytes but server now reports Content-Length $content_length (truncated or changed mid-download)" >&2
-    echo "Please re-run the build to get a consistent copy." >&2
-    rm -f "$file"
-    exit 1
-  fi
-
-  # (b) Race check: content-length component of the ETag, pre vs post download.
+  local post_etag
+  post_etag=$(curl -sI --fail --max-time 30 "$url" 2>/dev/null | grep -im1 '^etag:' | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//' || true)
   if [ -z "$post_etag" ]; then
-    echo "Warning: could not re-fetch $label ETag after download; relied on size/SHA256 checks" >&2
+    echo "Warning: could not re-fetch $label ETag after download; relying on the completed download + SHA256 checks" >&2
     return 0
   fi
   if [ "$(etag_content_id "$pre_etag")" != "$(etag_content_id "$post_etag")" ]; then
@@ -135,7 +123,7 @@ verify_download_not_raced() {
     rm -f "$file"
     exit 1
   fi
-  echo "$label download verified: $file_size bytes, content unchanged during download"
+  echo "$label download verified: content unchanged during download"
 }
 
 # Verify a built collector is a real self-contained binary, not the ~100KB
