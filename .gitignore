@@ -6,6 +6,9 @@ CLAUDE.md
 /velociraptor
 /velociraptor_darwin_amd64
 /velociraptor_darwin_arm64
+/rcodesign
+/apple-codesign-*/
+/apple-codesign-*.tar.gz
 /server.config.yaml
 /server.config.yaml.tmp
 /datastore/

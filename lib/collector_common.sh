@@ -152,3 +152,28 @@ verify_collector_not_stub() {
       exit 1 ;;
   esac
 }
+
+# Ad-hoc code-sign a macOS (Mach-O) collector so modern macOS will run it.
+# Velociraptor's offline-collector builder embeds the collection config by
+# APPENDING it to the darwin velociraptor binary, which invalidates the binary's
+# code signature. macOS (Sequoia / 26+) then SIGKILLs the collector on launch
+# ("zsh: killed"). An ad-hoc signature (no certificate) restores a valid
+# signature so it runs. NOTE: ad-hoc is NOT notarization — a browser download is
+# still Gatekeeper-quarantined and needs `xattr -d com.apple.quarantine` first.
+# Prefers Apple's codesign (macOS host); on Linux CI uses rcodesign, which can
+# sign Mach-O cross-platform (`./rcodesign` if downloaded into the workspace, or
+# on PATH). Signing is required: returns non-zero if no signer is available.
+adhoc_sign_macos() {
+  local file="$1"
+  if command -v codesign >/dev/null 2>&1; then
+    codesign --force --sign - "$file" || return 1
+  elif [ -x ./rcodesign ]; then
+    ./rcodesign sign "$file" || return 1
+  elif command -v rcodesign >/dev/null 2>&1; then
+    rcodesign sign "$file" || return 1
+  else
+    echo "Error: no ad-hoc signing tool (codesign or rcodesign) found to sign $file" >&2
+    return 1
+  fi
+  echo "Ad-hoc signed: $file"
+}

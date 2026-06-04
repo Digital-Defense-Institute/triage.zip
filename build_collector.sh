@@ -105,6 +105,26 @@ download_with_retry "$darwin_amd64_url" "./velociraptor_darwin_amd64" || exit 1
 echo "Downloading Velociraptor darwin-arm64 binary..."
 download_with_retry "$darwin_arm64_url" "./velociraptor_darwin_arm64" || exit 1
 
+# Download rcodesign to ad-hoc sign the macOS collectors on this Linux host.
+# Velociraptor's repack appends the embedded config to the darwin binary, which
+# invalidates its code signature; modern macOS then SIGKILLs the collector on
+# launch unless it carries a valid signature. rcodesign signs Mach-O binaries
+# cross-platform. Pinned + SHA256-verified for supply-chain integrity.
+RCODESIGN_VERSION="0.29.0"
+RCODESIGN_TARBALL="apple-codesign-${RCODESIGN_VERSION}-x86_64-unknown-linux-musl.tar.gz"
+RCODESIGN_URL="https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${RCODESIGN_VERSION}/${RCODESIGN_TARBALL}"
+RCODESIGN_SHA256="dbe85cedd8ee4217b64e9a0e4c2aef92ab8bcaaa41f20bde99781ff02e600002"
+echo "Downloading rcodesign ${RCODESIGN_VERSION} (macOS collector signer)..."
+download_with_retry "$RCODESIGN_URL" "$RCODESIGN_TARBALL" || exit 1
+echo "${RCODESIGN_SHA256}  ${RCODESIGN_TARBALL}" | sha256sum -c - || {
+  echo "Error: rcodesign tarball SHA256 mismatch — refusing to use it" >&2
+  exit 1
+}
+tar xzf "$RCODESIGN_TARBALL" "apple-codesign-${RCODESIGN_VERSION}-x86_64-unknown-linux-musl/rcodesign"
+mv "apple-codesign-${RCODESIGN_VERSION}-x86_64-unknown-linux-musl/rcodesign" ./rcodesign
+chmod +x ./rcodesign
+rm -rf "$RCODESIGN_TARBALL" "apple-codesign-${RCODESIGN_VERSION}-x86_64-unknown-linux-musl"
+
 # Download and extract Windows.Triage.Targets artifact
 mkdir -p ./datastore/artifact_definitions/Windows/Triage
 ARTIFACT_URL="https://triage.velocidex.com/artifacts/Windows.Triage.Targets.zip"
@@ -264,14 +284,17 @@ if ! grep -qF "location: ${DATASTORE_ABS}" server.config.yaml; then
   exit 1
 fi
 
-# Build the macOS ARM64 collector (embed darwin-arm64 binary)
+# Build the macOS ARM64 collector (embed darwin-arm64 binary), then ad-hoc sign
+# it so the embedded-config append doesn't leave it unrunnable on modern macOS.
 echo "Registering darwin-arm64 binary and building macOS ARM64 collector..."
 ./velociraptor --config server.config.yaml tools upload --name VelociraptorCollector --download ./velociraptor_darwin_arm64
 ./velociraptor collector --datastore ./datastore/ ./config/spec_macos_arm.yaml
+adhoc_sign_macos ./datastore/Velociraptor_Triage_Collector_macOS_ARM || exit 1
 verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector_macOS_ARM
 
 # Build the macOS x64 collector (re-point VelociraptorCollector to darwin-amd64)
 echo "Registering darwin-amd64 binary and building macOS x64 collector..."
 ./velociraptor --config server.config.yaml tools upload --name VelociraptorCollector --download ./velociraptor_darwin_amd64
 ./velociraptor collector --datastore ./datastore/ ./config/spec_macos.yaml
+adhoc_sign_macos ./datastore/Velociraptor_Triage_Collector_macOS || exit 1
 verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector_macOS
