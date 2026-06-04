@@ -327,6 +327,7 @@ body {
 .cards-container {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    align-items: start;
     gap: 1.5rem;
     margin: 3rem 0 2rem;
 }
@@ -429,7 +430,10 @@ body {
 
 #tab-windows:checked ~ #panel-windows,
 #tab-linux:checked ~ #panel-linux,
-#tab-macos:checked ~ #panel-macos {
+#tab-macos:checked ~ #panel-macos,
+#howto-windows:checked ~ #howto-panel-windows,
+#howto-linux:checked ~ #howto-panel-linux,
+#howto-macos:checked ~ #howto-panel-macos {
     display: block;
 }
 
@@ -490,6 +494,33 @@ body {
 .slim-tip {
     padding: 0.7rem 0.9rem;
     font-size: 0.9rem;
+}
+
+.instructions p code {
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.85em;
+    color: #cfe9ee;
+    background: rgba(79, 244, 255, 0.08);
+    padding: 0.05rem 0.35rem;
+    border-radius: 5px;
+    word-break: break-word;
+}
+
+.cmd {
+    display: block;
+    margin-top: 0.7rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 10px;
+    background: rgba(2, 6, 16, 0.55);
+    border: 1px solid rgba(79, 244, 255, 0.18);
+    color: #cfe9ee;
+    font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+    user-select: all;
 }
 
 .features {

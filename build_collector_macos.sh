@@ -199,10 +199,12 @@ fi
 echo "Registering darwin-arm64 binary and building macOS ARM64 collector..."
 ./velociraptor --config server.config.yaml tools upload --name VelociraptorCollector --download ./velociraptor_darwin_arm64
 ./velociraptor collector --datastore ./datastore/ ./config/spec_macos_arm.yaml
+adhoc_sign_macos ./datastore/Velociraptor_Triage_Collector_macOS_ARM || exit 1
 verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector_macOS_ARM
 
 # Build the macOS x64 collector (re-point VelociraptorCollector to darwin-amd64)
 echo "Registering darwin-amd64 binary and building macOS x64 collector..."
 ./velociraptor --config server.config.yaml tools upload --name VelociraptorCollector --download ./velociraptor
 ./velociraptor collector --datastore ./datastore/ ./config/spec_macos.yaml
+adhoc_sign_macos ./datastore/Velociraptor_Triage_Collector_macOS || exit 1
 verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector_macOS
