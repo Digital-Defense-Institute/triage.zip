@@ -81,18 +81,61 @@ asset_url_by_name() {
 }
 
 # Extract the content-identifying part of an nginx/S3-style ETag. These servers
-# emit ETags of the form "<mtime-hex>-<content-length-hex>"; the mtime prefix can
-# differ between CDN edge nodes (or after a no-op touch) for byte-identical
-# content, which would otherwise trip the download race-condition guard with a
-# false positive. Comparing only the content-length field tolerates that wobble
-# while still catching a real size-changing swap mid-download (and the stored
-# SHA256 check still guards same-length tampering). Strips a weak-validator W/
-# prefix and quotes; with no '-' it returns the whole de-quoted value so a
-# non-standard ETag still compares exactly.
+# emit ETags of the form "<mtime-hex>-<content-length-hex>" (optionally with a
+# content-coding suffix like "-gzip"); the mtime prefix can differ between CDN
+# edge nodes (or after a no-op touch) for byte-identical content, which would
+# otherwise trip change-detection and the download race-guard with a false
+# positive. We return the content-length field — the SECOND hyphen-delimited
+# field — so a trailing "-gzip" (or any extra suffix) does not shift which field
+# is read. With no hyphen the whole de-quoted value is returned so a non-standard
+# ETag still compares exactly.
 etag_content_id() {
-  local etag="${1#W/}"
-  etag="${etag//\"/}"
-  printf '%s' "${etag##*-}"
+  local etag="${1#W/}"   # drop weak-validator prefix
+  etag="${etag//\"/}"    # drop quotes
+  local rest="${etag#*-}"     # strip the mtime field (everything up to first '-')
+  printf '%s' "${rest%%-*}"   # keep the content-length field (up to the next '-')
+}
+
+# Verify a freshly downloaded artifact is consistent with the server's current
+# state: it was not truncated and was not swapped for a different-length object
+# between the pre-download HEAD (whose ETag is $3) and now. Re-HEADs $1 and
+# checks (a) the on-disk byte size equals the server's current Content-Length —
+# ground truth, catching a truncated/partial download — and (b) the ETag
+# content-length field is unchanged vs the pre-download ETag, catching a
+# mid-download swap. A same-length content swap cannot be detected from HTTP
+# metadata alone (the server exposes no content hash); the separate stored-SHA256
+# reuse check is the only content-level guard and is best-effort.
+# Args: <url> <file> <pre_download_etag> <label>. rm's <file> and exits 1 on mismatch.
+verify_download_not_raced() {
+  local url="$1" file="$2" pre_etag="$3" label="$4"
+  local headers post_etag content_length file_size
+  headers=$(curl -sI --fail --max-time 30 "$url" 2>/dev/null || true)
+  post_etag=$(printf '%s\n' "$headers" | grep -im1 '^etag:' | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//')
+  content_length=$(printf '%s\n' "$headers" | grep -im1 '^content-length:' | tr -d '\r' | sed 's/^[Cc]ontent-[Ll]ength: *//')
+  file_size=$(wc -c < "$file" | tr -d '[:space:]')
+
+  # (a) Ground-truth size check: on-disk bytes vs the server's advertised length.
+  if [ -n "$content_length" ] && [ "$file_size" != "$content_length" ]; then
+    echo "Error: $label downloaded $file_size bytes but server now reports Content-Length $content_length (truncated or changed mid-download)" >&2
+    echo "Please re-run the build to get a consistent copy." >&2
+    rm -f "$file"
+    exit 1
+  fi
+
+  # (b) Race check: content-length component of the ETag, pre vs post download.
+  if [ -z "$post_etag" ]; then
+    echo "Warning: could not re-fetch $label ETag after download; relied on size/SHA256 checks" >&2
+    return 0
+  fi
+  if [ "$(etag_content_id "$pre_etag")" != "$(etag_content_id "$post_etag")" ]; then
+    echo "Error: $label content changed during download (race condition detected)" >&2
+    echo "  Pre-download ETag:  $pre_etag" >&2
+    echo "  Post-download ETag: $post_etag" >&2
+    echo "Please re-run the build to get the latest version." >&2
+    rm -f "$file"
+    exit 1
+  fi
+  echo "$label download verified: $file_size bytes, content unchanged during download"
 }
 
 # Verify a built collector is a real self-contained binary, not the ~100KB
