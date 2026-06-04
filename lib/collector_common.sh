@@ -101,10 +101,12 @@ etag_content_id() {
 # raced our build. download_with_retry already guarantees the bytes are complete
 # (curl --fail errors on a short read vs Content-Length and retries), so this
 # only re-reads the ETag and compares its content-length field, which is
-# mtime-wobble tolerant (see etag_content_id). A same-byte-length content swap
-# cannot be detected from HTTP metadata (no server content hash); the separate
-# stored-SHA256 reuse check is the only content-level guard. If the post-download
-# HEAD yields no ETag (transient/redirect), degrade gracefully rather than fail.
+# mtime-wobble tolerant (see etag_content_id). This is best-effort: a republish
+# that keeps the exact byte length is not detectable from HTTP metadata (no
+# server content hash), and the stored-SHA256 check elsewhere only fires when the
+# ETag is unchanged across builds, so it does not backstop a mid-build republish
+# either. If the post-download HEAD yields no ETag (transient/redirect), degrade
+# gracefully rather than fail.
 # The trailing `|| true` keeps the no-match grep from aborting under pipefail.
 # Args: <url> <file> <pre_download_etag> <label>. rm's <file> and exits 1 on a race.
 verify_download_not_raced() {
