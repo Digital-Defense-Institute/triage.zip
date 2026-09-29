@@ -5,6 +5,7 @@ to logs/metadata, and deleted between runs to avoid filling the runner's disk.
 """
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -152,6 +153,27 @@ def main():
                    "--timeout", "600", "--output", dest], dest, rep)
 
     if windows and args.phase != "engine":
+        # The standard executable reserves about 80 KiB for compressed config.
+        # Bundle the unchanged compressed rules as a resource, rather than
+        # embedding their ~1 MiB base64 string in the artifact definition.
+        rules_path = definitions / "Windows.Hayabusa.Rules.yaml"
+        rule_artifact = yaml.safe_load(rules_path.read_text())
+        original_query = rule_artifact["sources"][0]["query"]
+        rule_pattern = r'LET Rules <= gunzip\(string=base64decode\(string="([^"]+)"\)\)'
+        match = re.search(rule_pattern, original_query)
+        if not match:
+            raise RuntimeError("Unexpected curated rule artifact format")
+        payload = work / "sigma-rules.yaml.gz"
+        payload.write_bytes(base64.b64decode(match.group(1)))
+        rule_artifact["tools"] = [{"name": "HayabusaSigmaRules"}]
+        rule_artifact["sources"][0]["query"] = re.sub(
+            rule_pattern,
+            'LET RuleFile <= SELECT * FROM Artifact.Generic.Utils.FetchBinary(\n'
+            '    ToolName="HayabusaSigmaRules", IsExecutable=FALSE)\n'
+            'LET Rules <= gunzip(string=read_file(filename=RuleFile[0].OSPath))',
+            original_query, count=1)
+        rules_path.write_text(json.dumps(rule_artifact, indent=2))
+        host["bundled_rules_sha256"] = hashlib.sha256(payload.read_bytes()).hexdigest()
         # Build actual self-contained EXEs with the project's complete Windows spec.
         target_pack = work / "triage.zip"
         target_digest = download("https://triage.velocidex.com/artifacts/Windows.Triage.Targets.zip", target_pack)
@@ -164,10 +186,16 @@ def main():
         base = yaml.safe_load((REPO / "config/spec.yaml").read_text())
         collectors = {}
         for label in ("baseline", "medium"):
+            if label == "medium":
+                execute([binary, "--config", work / "datastore/server.config.yaml", "tools", "upload",
+                         "--name", "HayabusaSigmaRules", "--filename", payload.name, payload],
+                        output / "register-rules.log", timeout=120)
             spec = json.loads(json.dumps(base))
-            spec.update(OptCollectorTemplate=f"benchmark-{label}.exe", OptPrompt="N", OptAdmin="Y",
+            spec.update(OptCollectorTemplate=f"benchmark-{label}.exe", OptPrompt=False, OptAdmin=True,
                         OptOutputDirectory=work.as_posix(), OptFilenameTemplate=f"benchmark-{label}",
                         OptTimeout=600)
+            for option in ("OptVerbose", "OptBanner"):
+                spec[option] = str(spec[option]).lower() in ("y", "yes", "true")
             if label == "medium":
                 spec["Artifacts"]["Windows.Hayabusa.Rules"] = dict(zip(("RuleLevel", "RuleStatus"), PROFILES["medium"]))
             spec_path = work / f"spec-{label}.yaml"

@@ -25,6 +25,14 @@ Manual dispatch defaults to both phases. Branch pushes run the paired triage
 phase only; select `engine` or `all` in manual dispatch to measure the corpus.
 The CLI also accepts `--phase engine` or `--phase triage` for targeted reruns.
 
+The full curated rules artifact exceeds the standard executable's embedded
+configuration capacity. For standalone builds, the script moves its unchanged
+compressed rule payload into a bundled `HayabusaSigmaRules` resource and replaces
+the large inline constant with a local `Generic.Utils.FetchBinary` / `read_file`
+call. The collector builder overrides `FetchBinary` to read resources from its
+own executable. The Sigma base model and all matching rules remain unchanged;
+there is no runtime rule download or external detection executable.
+
 To run locally, install Python 3.12, `PyYAML==6.0.2` and `psutil==7.0.0`, then:
 
 ```powershell
