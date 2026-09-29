@@ -113,5 +113,28 @@
         "sigma: Completed with 665 hits"
       ]
     }
+  ],
+  "empty_log_controls": [
+    {
+      "profile": "high",
+      "wall_seconds": 1.23,
+      "user_seconds": 2.26,
+      "system_seconds": 0.11,
+      "max_rss_kib": 152368
+    },
+    {
+      "profile": "medium",
+      "wall_seconds": 1.24,
+      "user_seconds": 2.24,
+      "system_seconds": 0.13,
+      "max_rss_kib": 183924
+    },
+    {
+      "profile": "all",
+      "wall_seconds": 1.31,
+      "user_seconds": 2.36,
+      "system_seconds": 0.13,
+      "max_rss_kib": 187116
+    }
   ]
 }
