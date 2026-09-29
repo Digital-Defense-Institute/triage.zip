@@ -225,9 +225,9 @@ def main():
                     "The Windows runner is a fresh server VM, not a typical user workstation.",
                     "Memory/CPU measurements are sampled for the collector process; child tool usage is excluded."])
     text = "\n".join(summary) + "\n"
-    (output / "summary.md").write_text(text)
+    (output / "summary.md").write_text(text, encoding="utf-8")
     if os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as stream:
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
             stream.write(text)
 
 
