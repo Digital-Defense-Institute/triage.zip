@@ -1,0 +1,33 @@
+name: Sigma benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches-ignore: [main]
+    paths:
+      - '.github/workflows/sigma-benchmark.yml'
+      - 'scripts/benchmark_sigma.py'
+      - 'benchmarks/sigma/inputs.json'
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyYAML==6.0.2 psutil==7.0.0
+      - name: Benchmark standalone collectors
+        run: python scripts/benchmark_sigma.py --work "$env:RUNNER_TEMP/sigma-benchmark" --output benchmark-results
+      - name: Preserve measurements and collection logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sigma-windows-2022
+          path: benchmark-results/
+          retention-days: 14

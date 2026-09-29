@@ -1,0 +1,33 @@
+{
+  "commit": "0845333ecb4afcf64c55c6e10946383f168f308c",
+  "files": [
+    {
+      "name": "Security.evtx",
+      "path": "DeepBlueCLI/many-events-security.evtx",
+      "sha256": "e1bb83d4583aaee2144f37afd8ce9b647ae7f34a636b85ce4a75683fba93f30e"
+    },
+    {
+      "name": "System.evtx",
+      "path": "DeepBlueCLI/many-events-system.evtx",
+      "sha256": "cac38c40a0420f2d1c71f6dd13143edab1ead77b9bb4cf6e9cea34c9f3bcf3da"
+    },
+    {
+      "name": "Application.evtx",
+      "path": "DeepBlueCLI/many-events-application.evtx",
+      "sha256": "358a6d18e110457a5fc70d32e88fb1ffb75a16f4616258d73e381c849a88bfcc"
+    },
+    {
+      "name": "Microsoft-Windows-PowerShell%4Operational.evtx",
+      "path": "DeepBlueCLI/Powershell-Invoke-Obfuscation-many.evtx",
+      "sha256": "2fa243e52ab2bba2ad3bc7a1a14ea653a1508575e703c494cfc36e78c219a5ad"
+    },
+    {
+      "name": "Microsoft-Windows-Sysmon%4Operational.evtx",
+      "path": "EVTX-ATTACK-SAMPLES/AutomatedTestingTools/PanacheSysmon_vs_AtomicRedTeam01.evtx",
+      "sha256": "6903dff9f218fa027c704c8c445b74e08b952c8d71be79bd0327f1e792d4aa01"
+    }
+  ],
+  "sigma_sha256": "28cfa3e60121d557c4a83e18fd77e279cbc26650adc7281b2fa18b48e057701b",
+  "version": "0.77.2",
+  "windows_binary_sha256": "686e4f5888fdd66d07ace3b6c1cbd7d2dd0d8d5fb4d3b5d905a7df3341dfb86f"
+}
