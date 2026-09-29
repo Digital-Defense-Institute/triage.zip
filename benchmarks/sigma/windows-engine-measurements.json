@@ -1,0 +1,213 @@
+{
+  "run_url": "https://github.com/Digital-Defense-Institute/triage.zip/actions/runs/36629447370",
+  "environment": {
+    "platform": "Windows-2022Server-10.0.20348-SP0",
+    "cpu_count": 4,
+    "memory_bytes": 17174360064,
+    "python": "3.12.10",
+    "runner_image": "20260927.320.1",
+    "inputs": {
+      "commit": "0845333ecb4afcf64c55c6e10946383f168f308c",
+      "files": [
+        {
+          "name": "Security.evtx",
+          "path": "DeepBlueCLI/many-events-security.evtx",
+          "sha256": "e1bb83d4583aaee2144f37afd8ce9b647ae7f34a636b85ce4a75683fba93f30e"
+        },
+        {
+          "name": "System.evtx",
+          "path": "DeepBlueCLI/many-events-system.evtx",
+          "sha256": "cac38c40a0420f2d1c71f6dd13143edab1ead77b9bb4cf6e9cea34c9f3bcf3da"
+        },
+        {
+          "name": "Application.evtx",
+          "path": "DeepBlueCLI/many-events-application.evtx",
+          "sha256": "358a6d18e110457a5fc70d32e88fb1ffb75a16f4616258d73e381c849a88bfcc"
+        },
+        {
+          "name": "Microsoft-Windows-PowerShell%4Operational.evtx",
+          "path": "DeepBlueCLI/Powershell-Invoke-Obfuscation-many.evtx",
+          "sha256": "2fa243e52ab2bba2ad3bc7a1a14ea653a1508575e703c494cfc36e78c219a5ad"
+        },
+        {
+          "name": "Microsoft-Windows-Sysmon%4Operational.evtx",
+          "path": "EVTX-ATTACK-SAMPLES/AutomatedTestingTools/PanacheSysmon_vs_AtomicRedTeam01.evtx",
+          "sha256": "6903dff9f218fa027c704c8c445b74e08b952c8d71be79bd0327f1e792d4aa01"
+        }
+      ],
+      "sigma_sha256": "28cfa3e60121d557c4a83e18fd77e279cbc26650adc7281b2fa18b48e057701b",
+      "version": "0.77.2",
+      "windows_binary_sha256": "686e4f5888fdd66d07ace3b6c1cbd7d2dd0d8d5fb4d3b5d905a7df3341dfb86f"
+    },
+    "events_by_file": [
+      {
+        "OSPath": "D:\\a\\_temp\\sigma-benchmark\\logs\\Application.evtx",
+        "Events": 2216
+      },
+      {
+        "OSPath": "D:\\a\\_temp\\sigma-benchmark\\logs\\Microsoft-Windows-PowerShell%4Operational.evtx",
+        "Events": 302
+      },
+      {
+        "OSPath": "D:\\a\\_temp\\sigma-benchmark\\logs\\Microsoft-Windows-Sysmon%4Operational.evtx",
+        "Events": 565
+      },
+      {
+        "OSPath": "D:\\a\\_temp\\sigma-benchmark\\logs\\Security.evtx",
+        "Events": 13223
+      },
+      {
+        "OSPath": "D:\\a\\_temp\\sigma-benchmark\\logs\\System.evtx",
+        "Events": 8414
+      }
+    ],
+    "dataset_bytes": 21319680,
+    "triage_targets_sha256": "70fe25570215a588e82f50989935f0c5ff259c436fe5f4b026488c4da7bbbc03"
+  },
+  "runs": [
+    {
+      "wall_seconds": 4.621527000000015,
+      "sampled_peak_rss_bytes": 148066304,
+      "sampled_cpu_seconds": 12.609375,
+      "zip_bytes": 902193,
+      "sigma_hits": 22,
+      "sigma_loaded": [
+        "sigma: Loaded 116 rules (from 104) into 6 log sources and 416 field mappings"
+      ],
+      "sigma_completed": [
+        "sigma: Completed with 22 hits"
+      ],
+      "errors": [],
+      "label": "engine-high",
+      "repetition": 0
+    },
+    {
+      "wall_seconds": 4.521675499999986,
+      "sampled_peak_rss_bytes": 144572416,
+      "sampled_cpu_seconds": 12.390625,
+      "zip_bytes": 902181,
+      "sigma_hits": 22,
+      "sigma_loaded": [
+        "sigma: Loaded 116 rules (from 104) into 6 log sources and 416 field mappings"
+      ],
+      "sigma_completed": [
+        "sigma: Completed with 22 hits"
+      ],
+      "errors": [],
+      "label": "engine-high",
+      "repetition": 1
+    },
+    {
+      "wall_seconds": 4.504643999999985,
+      "sampled_peak_rss_bytes": 143462400,
+      "sampled_cpu_seconds": 12.40625,
+      "zip_bytes": 902188,
+      "sigma_hits": 22,
+      "sigma_loaded": [
+        "sigma: Loaded 116 rules (from 104) into 6 log sources and 416 field mappings"
+      ],
+      "sigma_completed": [
+        "sigma: Completed with 22 hits"
+      ],
+      "errors": [],
+      "label": "engine-high",
+      "repetition": 2
+    },
+    {
+      "wall_seconds": 78.54116390000002,
+      "sampled_peak_rss_bytes": 309686272,
+      "sampled_cpu_seconds": 294.109375,
+      "zip_bytes": 1444964,
+      "sigma_hits": 665,
+      "sigma_loaded": [
+        "sigma: Loaded 3892 rules (from 3874) into 30 log sources and 416 field mappings"
+      ],
+      "sigma_completed": [
+        "sigma: Completed with 665 hits"
+      ],
+      "errors": [],
+      "label": "engine-medium",
+      "repetition": 0
+    },
+    {
+      "wall_seconds": 78.84290340000001,
+      "sampled_peak_rss_bytes": 325939200,
+      "sampled_cpu_seconds": 295.71875,
+      "zip_bytes": 1448781,
+      "sigma_hits": 665,
+      "sigma_loaded": [
+        "sigma: Loaded 3892 rules (from 3874) into 30 log sources and 416 field mappings"
+      ],
+      "sigma_completed": [
+        "sigma: Completed with 665 hits"
+      ],
+      "errors": [],
+      "label": "engine-medium",
+      "repetition": 1
+    },
+    {
+      "wall_seconds": 80.47389079999999,
+      "sampled_peak_rss_bytes": 325136384,
+      "sampled_cpu_seconds": 296.09375,
+      "zip_bytes": 1448914,
+      "sigma_hits": 665,
+      "sigma_loaded": [
+        "sigma: Loaded 3892 rules (from 3874) into 30 log sources and 416 field mappings"
+      ],
+      "sigma_completed": [
+        "sigma: Completed with 665 hits"
+      ],
+      "errors": [],
+      "label": "engine-medium",
+      "repetition": 2
+    },
+    {
+      "wall_seconds": 96.85992599999997,
+      "sampled_peak_rss_bytes": 351813632,
+      "sampled_cpu_seconds": 366.40625,
+      "zip_bytes": 1835435,
+      "sigma_hits": 2681,
+      "sigma_loaded": [
+        "sigma: Loaded 4850 rules (from 4827) into 33 log sources and 416 field mappings"
+      ],
+      "sigma_completed": [
+        "sigma: Completed with 2681 hits"
+      ],
+      "errors": [],
+      "label": "engine-all",
+      "repetition": 0
+    },
+    {
+      "wall_seconds": 98.1593461,
+      "sampled_peak_rss_bytes": 376848384,
+      "sampled_cpu_seconds": 367.609375,
+      "zip_bytes": 1787168,
+      "sigma_hits": 2681,
+      "sigma_loaded": [
+        "sigma: Loaded 4850 rules (from 4827) into 33 log sources and 416 field mappings"
+      ],
+      "sigma_completed": [
+        "sigma: Completed with 2681 hits"
+      ],
+      "errors": [],
+      "label": "engine-all",
+      "repetition": 1
+    },
+    {
+      "wall_seconds": 102.53639609999993,
+      "sampled_peak_rss_bytes": 335187968,
+      "sampled_cpu_seconds": 389.734375,
+      "zip_bytes": 1794228,
+      "sigma_hits": 2681,
+      "sigma_loaded": [
+        "sigma: Loaded 4850 rules (from 4827) into 33 log sources and 416 field mappings"
+      ],
+      "sigma_completed": [
+        "sigma: Completed with 2681 hits"
+      ],
+      "errors": [],
+      "label": "engine-all",
+      "repetition": 2
+    }
+  ]
+}

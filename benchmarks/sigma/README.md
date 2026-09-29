@@ -21,6 +21,10 @@ conserve disk. Input hashes and the public corpus commit are recorded in
 `inputs.json`; the live KAPE package's downloaded hash is recorded at runtime.
 No release is published by this workflow.
 
+Manual dispatch defaults to both phases. Branch pushes run the paired triage
+phase only; select `engine` or `all` in manual dispatch to measure the corpus.
+The CLI also accepts `--phase engine` or `--phase triage` for targeted reruns.
+
 To run locally, install Python 3.12, `PyYAML==6.0.2` and `psutil==7.0.0`, then:
 
 ```powershell

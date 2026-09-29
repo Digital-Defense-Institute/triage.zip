@@ -97,6 +97,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--work", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--phase", choices=("all", "engine", "triage"), default="all")
     args = parser.parse_args()
     work, output = args.work.resolve(), args.output.resolve()
     work.mkdir(parents=True, exist_ok=True)
@@ -142,7 +143,7 @@ def main():
         print(f"{label} repetition {rep}: {measured['wall_seconds']:.2f}s, {measured['sigma_hits']} Sigma hits", flush=True)
 
     # Same native engine/corpus on Linux and Windows, three repetitions/profile.
-    for label, (level, status) in PROFILES.items():
+    for label, (level, status) in (PROFILES.items() if args.phase != "triage" else []):
         for rep in range(3):
             dest = work / f"engine-{label}-{rep}.zip"
             record(f"engine-{label}", [binary, "--definitions", definitions, "artifacts", "collect",
@@ -150,7 +151,7 @@ def main():
                    "--args", f"RuleLevel={level}", "--args", f"RuleStatus={status}",
                    "--timeout", "600", "--output", dest], dest, rep)
 
-    if windows:
+    if windows and args.phase != "engine":
         # Build actual self-contained EXEs with the project's complete Windows spec.
         target_pack = work / "triage.zip"
         target_digest = download("https://triage.velocidex.com/artifacts/Windows.Triage.Targets.zip", target_pack)
@@ -170,7 +171,10 @@ def main():
             if label == "medium":
                 spec["Artifacts"]["Windows.Hayabusa.Rules"] = dict(zip(("RuleLevel", "RuleStatus"), PROFILES["medium"]))
             spec_path = work / f"spec-{label}.yaml"
-            spec_path.write_text(yaml.safe_dump(spec))
+            # JSON is valid YAML and keeps Y/N parameter values as strings.
+            # PyYAML emits unquoted Y, which Velociraptor reads as boolean true
+            # and rejects because artifact parameter values must be strings.
+            spec_path.write_text(json.dumps(spec, indent=2))
             execute([binary, "collector", "--datastore", work / "datastore", spec_path], output / f"build-{label}.log", timeout=300)
             matches = list((work / "datastore").rglob(f"benchmark-{label}.exe"))
             if len(matches) != 1 or matches[0].stat().st_size < 10_000_000:
@@ -185,7 +189,7 @@ def main():
     for label in dict.fromkeys(row["label"] for row in rows):
         times = [row["wall_seconds"] for row in rows if row["label"] == label]
         summary.append(f"| {label} | {statistics.median(times):.2f} | {min(times):.2f}–{max(times):.2f} |")
-    if windows:
+    if windows and args.phase != "engine":
         deltas = [next(r["wall_seconds"] for r in rows if r["label"] == "triage-medium" and r["repetition"] == rep)
                   - next(r["wall_seconds"] for r in rows if r["label"] == "triage-baseline" and r["repetition"] == rep) for rep in range(2)]
         summary.extend(["", f"Paired full-triage added seconds: {deltas}"])
