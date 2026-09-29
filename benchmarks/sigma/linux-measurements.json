@@ -1,0 +1,117 @@
+{
+  "environment": "Linux x86_64 VM, 3 vCPUs, Intel Skylake virtual CPU; warm cached public attack corpus",
+  "velociraptor_version": "0.77.2",
+  "dataset_bytes": 21319680,
+  "events": 24720,
+  "method": "/usr/bin/time; native artifacts collect with JSON ZIP output and compression level 5; three repetitions/profile",
+  "runs": [
+    {
+      "profile": "all",
+      "repetition": 0,
+      "wall_seconds": 70.98,
+      "user_seconds": 199.77,
+      "system_seconds": 1.0,
+      "max_rss_kib": 290372,
+      "sigma_messages": [
+        "sigma: Loaded 4850 rules (from 4827) into 33 log sources and 416 field mappings",
+        "sigma: Completed with 2681 hits"
+      ]
+    },
+    {
+      "profile": "all",
+      "repetition": 1,
+      "wall_seconds": 69.75,
+      "user_seconds": 195.5,
+      "system_seconds": 0.98,
+      "max_rss_kib": 288048,
+      "sigma_messages": [
+        "sigma: Loaded 4850 rules (from 4827) into 33 log sources and 416 field mappings",
+        "sigma: Completed with 2681 hits"
+      ]
+    },
+    {
+      "profile": "all",
+      "repetition": 2,
+      "wall_seconds": 67.22,
+      "user_seconds": 189.39,
+      "system_seconds": 0.91,
+      "max_rss_kib": 282840,
+      "sigma_messages": [
+        "sigma: Loaded 4850 rules (from 4827) into 33 log sources and 416 field mappings",
+        "sigma: Completed with 2681 hits"
+      ]
+    },
+    {
+      "profile": "high",
+      "repetition": 0,
+      "wall_seconds": 2.81,
+      "user_seconds": 6.34,
+      "system_seconds": 0.22,
+      "max_rss_kib": 177620,
+      "sigma_messages": [
+        "sigma: Loaded 116 rules (from 104) into 6 log sources and 416 field mappings",
+        "sigma: Completed with 22 hits"
+      ]
+    },
+    {
+      "profile": "high",
+      "repetition": 1,
+      "wall_seconds": 2.8,
+      "user_seconds": 6.31,
+      "system_seconds": 0.22,
+      "max_rss_kib": 172964,
+      "sigma_messages": [
+        "sigma: Loaded 116 rules (from 104) into 6 log sources and 416 field mappings",
+        "sigma: Completed with 22 hits"
+      ]
+    },
+    {
+      "profile": "high",
+      "repetition": 2,
+      "wall_seconds": 2.72,
+      "user_seconds": 6.26,
+      "system_seconds": 0.24,
+      "max_rss_kib": 173800,
+      "sigma_messages": [
+        "sigma: Loaded 116 rules (from 104) into 6 log sources and 416 field mappings",
+        "sigma: Completed with 22 hits"
+      ]
+    },
+    {
+      "profile": "medium",
+      "repetition": 0,
+      "wall_seconds": 53.03,
+      "user_seconds": 150.2,
+      "system_seconds": 0.84,
+      "max_rss_kib": 289700,
+      "sigma_messages": [
+        "sigma: Loaded 3892 rules (from 3874) into 30 log sources and 416 field mappings",
+        "sigma: Completed with 665 hits"
+      ]
+    },
+    {
+      "profile": "medium",
+      "repetition": 1,
+      "wall_seconds": 59.57,
+      "user_seconds": 166.17,
+      "system_seconds": 0.86,
+      "max_rss_kib": 268028,
+      "sigma_messages": [
+        "sigma: Loaded 3892 rules (from 3874) into 30 log sources and 416 field mappings",
+        "sigma: Completed with 665 hits"
+      ]
+    },
+    {
+      "profile": "medium",
+      "repetition": 2,
+      "wall_seconds": 52.55,
+      "user_seconds": 148.8,
+      "system_seconds": 0.83,
+      "max_rss_kib": 264364,
+      "sigma_messages": [
+        "sigma: Loaded 3892 rules (from 3874) into 30 log sources and 416 field mappings",
+        "sigma: Completed with 665 hits"
+      ]
+    }
+  ]
+}
