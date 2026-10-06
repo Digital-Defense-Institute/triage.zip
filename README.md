@@ -4,48 +4,46 @@
 
 ## Overview
 
-**triage.zip** provides an out-of-the-box Velociraptor triage collector for Windows, pre-configured for rapid and effective incident response. The project is intended for responders who need a reliable offline collector without the hassle of building from scratch.
+**triage.zip** provides ready-to-run Velociraptor offline triage collectors for Windows x64, Linux x64, and macOS (Intel and Apple Silicon). Responders can collect evidence without building their own collector. 32-bit Windows is no longer supported.
 
-- **Automated Build and Deployment:**
-  Every commit to the `main` branch triggers a CI workflow (see [ci.yml](.github/workflows/ci.yml)) which:
-  1. Checks the latest Velociraptor release version against the currently-built version (tracked in data/velociraptor-version.json).
-  2. If a new version is available, spec.yaml was modified, OR Windows.Triage.Targets was updated, the build proceeds:
-     - Fetches the latest Velociraptor Linux binary from its official release.
-     - Verifies the binary SHA256 checksum matches the official release checksum.
-     - Generates an offline collector using the provided configuration ([spec.yaml](config/spec.yaml)).
-     - Deploys the collector as a GitHub release for easy download.
-  3. If no changes are detected, the build is skipped to avoid unnecessary rebuilds.
+## Automated Builds
 
-  In addition, a scheduled run every Monday at 6pm UTC checks for updates to both the Velociraptor release version and Windows.Triage.Targets artifact.
+The [CI workflow](.github/workflows/ci.yml) builds all four collectors on pushes to `main`, pull requests targeting `main`, and manual workflow dispatches. A scheduled run every Monday at 18:00 UTC checks the upstream Velociraptor version and the ETags of both `Windows.Triage.Targets` and `Linux.Triage.UAC`; scheduled builds are skipped when all three are unchanged.
 
-- **Configuration:**  
-  The collector behavior is defined in [spec.yaml](config/spec.yaml), detailing operating system, artifacts, collection parameters, and output settings.
+The build downloads the upstream Velociraptor binaries and triage artifact bundles, generates collectors from the platform configurations, and records version, artifact hashes/ETags, and build time in [data/velociraptor-version.json](data/velociraptor-version.json). Successful builds on `main` publish the four binaries to the `latest` GitHub release; pull request builds do not publish a release.
 
 ## Key Features
 
-- **Automated Builds:**  
-  CI workflows ensure that every update is built automatically and the latest version is available as a GitHub release.
-
-- **Offline Collector:**  
-  Designed to run without network dependencies, the executable facilitates rapid triage on target systems.
-
-- **Pre-configured Response Options:**  
-  Tailored for Windows environments, the spec includes options for valuable artifacts (e.g., KAPE triage targets, SANS triage, live system data, and Sysinternals Autoruns) to cover a wide range of triage scenarios.
+- **Offline collection:** Pre-packaged artifacts let responders collect evidence without a Velociraptor server connection.
+- **Windows triage:** KAPE and SANS triage targets, basic collection, live system data, and Sysinternals Autoruns, including Volume Shadow Copies up to three days old.
+- **Linux and macOS triage:** `Linux.Triage.UAC` collects the applicable Unix-like Artifacts Collector targets for each platform.
+- **ZIP output:** Each collector writes an evidence archive for later analysis.
 
 ## Usage Instructions
 
 1. **Download and Run:**
    Download the latest release of the collector (permalinks):
-   - [Windows x64 (64-bit)](https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector.exe) — recommended for most systems
-   - [Windows x86 (32-bit)](https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector_x86.exe) — for legacy 32-bit Windows
+   - [Windows x64](https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector.exe)
+   - [Linux x64](https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector_Linux)
+   - [macOS Intel x64](https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector_macOS)
+   - [macOS Apple Silicon](https://github.com/Digital-Defense-Institute/triage.zip/releases/download/latest/Velociraptor_Triage_Collector_macOS_ARM)
 
-   **Security Verification (Recommended):**
-   Verify the SHA256 checksum before running. The expected hash is published in the GitHub release notes. Compare it with the file you downloaded:
-   ```powershell
-   Get-FileHash .\<downloaded_filename>.exe -Algorithm SHA256
+   On Windows, **run the executable as Administrator** on the target system.
+
+   On Linux, make the collector executable and run it with `sudo`:
+   ```sh
+   chmod +x Velociraptor_Triage_Collector_Linux
+   sudo ./Velociraptor_Triage_Collector_Linux
    ```
 
-   **Run the executable as an Administrator** on the target system.
+   On macOS, use the binary matching the target's processor. For a trusted browser download, clear the quarantine flag, make it executable, and run it with `sudo` (replace the filename with `Velociraptor_Triage_Collector_macOS` for Intel):
+   ```sh
+   xattr -d com.apple.quarantine Velociraptor_Triage_Collector_macOS_ARM
+   chmod +x Velociraptor_Triage_Collector_macOS_ARM
+   sudo ./Velociraptor_Triage_Collector_macOS_ARM
+   ```
+
+   **Integrity metadata:** The hashes in `data/velociraptor-version.json` describe the downloaded triage artifact bundles, not the collector executables. Direct Velociraptor downloads are checked against the GitHub release asset size and SHA256 digest when supplied, then decompressed and checked for the expected executable type. Collector SHA256 hashes are not published in the release notes.
 
 2. **Triage Operation:**  
    Upon execution, the collector gathers artifacts and zips them using a naming template (`Triage-%FQDN%-%TIMESTAMP%.zip`), making it easy to correlate with the system it was collected from.  
@@ -56,22 +54,18 @@
 
 ## Building Your Own Collector
 
-If you wish to customize or build your own version, you can easily fork this repo:
-  
-- **Build Script:**  
-  Modify and examine the [build_collector.sh](build_collector.sh) script to understand how the collector is generated.
-  
-- **Configuration:**  
-  Adjust collection specifics in [spec.yaml](config/spec.yaml) to suit your needs.
-  
-- **Continuous Integration:**
-  The CI pipeline in [.github/workflows/ci.yml](.github/workflows/ci.yml) orchestrates the build and release process. Builds occur conditionally:
-  - When a new Velociraptor version is released
-  - When spec.yaml is modified
-  - When Windows.Triage.Targets artifact is updated (detected via ETag)
-  - On manual workflow dispatch
+Fork this repository and adjust the configuration for the target platform:
 
-  The build script detects artifact and version changes that occur during the build process by tracking version state in data/velociraptor-version.json.
+| Collector | Configuration |
+| --- | --- |
+| Windows x64 | [config/spec.yaml](config/spec.yaml) |
+| Linux x64 | [config/spec_linux.yaml](config/spec_linux.yaml) |
+| macOS Intel x64 | [config/spec_macos.yaml](config/spec_macos.yaml) |
+| macOS Apple Silicon | [config/spec_macos_arm.yaml](config/spec_macos_arm.yaml) |
+
+[build_collector.sh](build_collector.sh) builds all four collectors on Linux and is the script used by CI. [build_collector_macos.sh](build_collector_macos.sh) provides a macOS build path. Both use shared helpers in [lib/collector_common.sh](lib/collector_common.sh).
+
+CI builds PR and `main` changes even when the upstream version and artifact ETags are unchanged, so configuration and build-script changes are exercised. See [Automated Builds](#automated-builds) for the schedule and release behavior.
 
 ## Further Information
 

@@ -27,6 +27,9 @@ jobs:
       - name: Set up JQ
         run: sudo apt-get update && sudo apt-get install -y jq
 
+      - name: Run regression tests
+        run: bash tests/collector_common_test.sh
+
       - name: Check Velociraptor release version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -37,7 +40,7 @@ jobs:
             CURRENT_VERSION=$(jq -r '.velociraptor_version // "unknown"' data/velociraptor-version.json)
           fi
 
-          RESPONSE=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/Velocidex/velociraptor/releases/latest)
+          RESPONSE=$(curl --fail --silent --show-error --retry 3 -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/Velocidex/velociraptor/releases/latest)
           if [ -z "$RESPONSE" ]; then
             echo "Error: Unable to fetch Velociraptor release metadata" >&2
             exit 1
@@ -46,27 +49,24 @@ jobs:
           # Select the upstream version with the SAME helper build_collector.sh
           # uses, so the (numeric, not lexicographic) selection lives in one place.
           source ./lib/collector_common.sh
-          ASSET_NAME=$(select_velociraptor_asset "$RESPONSE" "linux-amd64" | jq -r '.name // empty')
-          UPSTREAM_VERSION=$(echo "$ASSET_NAME" | sed -n 's/.*velociraptor-v\([0-9.]*\)-linux-amd64$/\1/p')
-          if [ -z "$UPSTREAM_VERSION" ]; then
-            UPSTREAM_VERSION=$(echo "$RESPONSE" | jq -r '.tag_name' | sed 's/^v//')
-          fi
-
-          if [ -z "$UPSTREAM_VERSION" ] || [ "$UPSTREAM_VERSION" = "null" ]; then
-            echo "Error: Unable to determine upstream Velociraptor version" >&2
+          ASSET_INFO=$(select_velociraptor_asset "$RESPONSE" "linux-amd64")
+          ASSET_NAME=$(echo "$ASSET_INFO" | jq -r '.name // empty')
+          if [ -z "$ASSET_NAME" ]; then
+            echo "Error: Latest release has no supported Linux AMD64 binary" >&2
             exit 1
           fi
+          UPSTREAM_VERSION=$(echo "$ASSET_INFO" | jq -er ' .version | select(type == "string" and length > 0)')
 
           echo "Stored version: $CURRENT_VERSION"
           echo "Upstream version: $UPSTREAM_VERSION"
-          echo "UPSTREAM_VELO_VERSION=$UPSTREAM_VERSION" >> $GITHUB_ENV
+          echo "UPSTREAM_VELO_VERSION=$UPSTREAM_VERSION" >> "$GITHUB_ENV"
 
           if [ "$CURRENT_VERSION" = "$UPSTREAM_VERSION" ]; then
             echo "No new release detected."
-            echo "VELO_VERSION_CHANGED=false" >> $GITHUB_ENV
+            echo "VELO_VERSION_CHANGED=false" >> "$GITHUB_ENV"
           else
             echo "New release detected."
-            echo "VELO_VERSION_CHANGED=true" >> $GITHUB_ENV
+            echo "VELO_VERSION_CHANGED=true" >> "$GITHUB_ENV"
           fi
 
       - name: Check Windows.Triage.Targets version
@@ -81,7 +81,7 @@ jobs:
           for attempt in $(seq 1 $MAX_RETRIES); do
             echo "Fetching ETag (attempt $attempt of $MAX_RETRIES)..."
             HEADERS=$(curl -sI --fail --max-time 30 "https://triage.velocidex.com/artifacts/Windows.Triage.Targets.zip" 2>/dev/null || true)
-            CURRENT_ETAG=$(echo "$HEADERS" | grep -i "^etag:" | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//')
+            CURRENT_ETAG=$(echo "$HEADERS" | grep -i "^etag:" | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//' || true)
 
             if [ -n "$CURRENT_ETAG" ]; then
               break
@@ -114,7 +114,7 @@ jobs:
             echo "TRIAGE_ETAG<<EOF"
             echo "$CURRENT_ETAG"
             echo "EOF"
-          } >> $GITHUB_ENV
+          } >> "$GITHUB_ENV"
 
           # Change-detection compares the FULL ETag on purpose: it errs toward
           # rebuilding. A benign CDN mtime wobble may trigger a harmless extra
@@ -123,10 +123,10 @@ jobs:
           # mtime-tolerant to avoid failing a good build on a wobble.)
           if [ "$STORED_ETAG" = "$CURRENT_ETAG" ]; then
             echo "Triage targets unchanged."
-            echo "TRIAGE_TARGETS_CHANGED=false" >> $GITHUB_ENV
+            echo "TRIAGE_TARGETS_CHANGED=false" >> "$GITHUB_ENV"
           else
             echo "Triage targets changed."
-            echo "TRIAGE_TARGETS_CHANGED=true" >> $GITHUB_ENV
+            echo "TRIAGE_TARGETS_CHANGED=true" >> "$GITHUB_ENV"
           fi
 
       - name: Check Linux.Triage.UAC version
@@ -141,7 +141,7 @@ jobs:
           for attempt in $(seq 1 $MAX_RETRIES); do
             echo "Fetching Linux artifact ETag (attempt $attempt of $MAX_RETRIES)..."
             HEADERS=$(curl -sI --fail --max-time 30 "https://triage.velocidex.com/artifacts/Linux.Triage.UAC.zip" 2>/dev/null || true)
-            CURRENT_ETAG=$(echo "$HEADERS" | grep -i "^etag:" | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//')
+            CURRENT_ETAG=$(echo "$HEADERS" | grep -i "^etag:" | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//' || true)
 
             if [ -n "$CURRENT_ETAG" ]; then
               break
@@ -174,22 +174,22 @@ jobs:
             echo "LINUX_TRIAGE_ETAG<<EOF"
             echo "$CURRENT_ETAG"
             echo "EOF"
-          } >> $GITHUB_ENV
+          } >> "$GITHUB_ENV"
 
           # Full-ETag comparison on purpose — errs toward rebuilding so a real
           # change is never missed (see the Windows step).
           if [ "$STORED_ETAG" = "$CURRENT_ETAG" ]; then
             echo "Linux triage targets unchanged."
-            echo "LINUX_TRIAGE_TARGETS_CHANGED=false" >> $GITHUB_ENV
+            echo "LINUX_TRIAGE_TARGETS_CHANGED=false" >> "$GITHUB_ENV"
           else
             echo "Linux triage targets changed."
-            echo "LINUX_TRIAGE_TARGETS_CHANGED=true" >> $GITHUB_ENV
+            echo "LINUX_TRIAGE_TARGETS_CHANGED=true" >> "$GITHUB_ENV"
           fi
 
       - name: Run build script
-        if: env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || env.LINUX_TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+        if: env.VELO_VERSION_CHANGED == 'true' || env.TRIAGE_TARGETS_CHANGED == 'true' || env.LINUX_TRIAGE_TARGETS_CHANGED == 'true' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || github.event_name == 'push'
         env:
-          SKIP_IF_VERSION_UNCHANGED: ${{ (github.event_name != 'pull_request' && github.event_name != 'workflow_dispatch') && '1' || '' }}
+          SKIP_IF_VERSION_UNCHANGED: ${{ github.event_name == 'schedule' && '1' || '' }}
           TRIAGE_ETAG: ${{ env.TRIAGE_ETAG }}
           TRIAGE_TARGETS_CHANGED: ${{ env.TRIAGE_TARGETS_CHANGED }}
           LINUX_TRIAGE_ETAG: ${{ env.LINUX_TRIAGE_ETAG }}
@@ -234,7 +234,6 @@ jobs:
         run: |
           gh release create latest \
             ./datastore/Velociraptor_Triage_Collector.exe \
-            ./datastore/Velociraptor_Triage_Collector_x86.exe \
             ./datastore/Velociraptor_Triage_Collector_Linux \
             ./datastore/Velociraptor_Triage_Collector_macOS \
             ./datastore/Velociraptor_Triage_Collector_macOS_ARM \

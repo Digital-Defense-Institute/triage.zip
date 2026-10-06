@@ -21,7 +21,6 @@ fi
 # Identify the linux-amd64 build host binary (highest numeric version).
 asset_info=$(select_velociraptor_asset "$response" "linux-amd64")
 download_url=$(echo "$asset_info" | jq -r '.url')
-asset_name=$(echo "$asset_info" | jq -r '.name')
 
 if [ -z "$download_url" ] || [ "$download_url" == "null" ]; then
   echo "Error: Could not find a Linux AMD64 binary in the latest release" >&2
@@ -30,8 +29,7 @@ if [ -z "$download_url" ] || [ "$download_url" == "null" ]; then
   exit 1
 fi
 
-binary_version=$(echo "$asset_name" | sed -n 's/.*velociraptor-v\([0-9.]*\)-linux-amd64$/\1/p')
-velociraptor_version=${binary_version:-$(echo "$response" | jq -r '.tag_name' | sed 's/^v//')}
+velociraptor_version=$(echo "$asset_info" | jq -r '.version')
 
 if [ -z "$velociraptor_version" ] || [ "$velociraptor_version" == "null" ]; then
   echo "Error: Unable to determine Velociraptor version from asset metadata" >&2
@@ -80,30 +78,20 @@ mkdir -p data
 echo "Downloading Velociraptor binary from: $download_url"
 
 # Download Velociraptor binary and make it executable
-download_with_retry "$download_url" "./velociraptor" || exit 1
-chmod +x ./velociraptor
+download_velociraptor_asset "$asset_info" "./velociraptor" || exit 1
 
-# Download the macOS (darwin) binaries. The offline-collector builder maps both
-# the MacOS and MacOSArm targets to a single "VelociraptorCollector" tool that
-# has no default download URL, so without supplying the binary the build emits a
-# tiny BYO-binary shell stub instead of a self-contained collector. We download
-# both darwin binaries here and register them per-arch before each macOS build.
-# Pin the darwin binaries to the EXACT version of the linux-amd64 build host
-# ($velociraptor_version): an exact name match detects per-arch version skew — if
-# Velocidex has not yet published darwin assets for this version, the URL is empty
-# and we fail loud instead of embedding a mismatched, version-bound binary.
-darwin_amd64_url=$(asset_url_by_name "$response" "velociraptor-v${velociraptor_version}-darwin-amd64")
-darwin_arm64_url=$(asset_url_by_name "$response" "velociraptor-v${velociraptor_version}-darwin-arm64")
-if [ -z "$darwin_amd64_url" ] || [ "$darwin_amd64_url" == "null" ] || \
-   [ -z "$darwin_arm64_url" ] || [ "$darwin_arm64_url" == "null" ]; then
-  echo "Error: darwin-amd64/darwin-arm64 binaries for v${velociraptor_version} not found in the latest release." >&2
-  echo "The build host is linux-amd64 v${velociraptor_version}; both darwin binaries must match it (per-arch version skew?)." >&2
+# Pin both embedded darwin binaries to the exact host version. Resolve all
+# assets before downloading so missing per-architecture releases fail clearly.
+darwin_amd64_asset=$(select_velociraptor_asset "$response" "darwin-amd64" "$velociraptor_version")
+darwin_arm64_asset=$(select_velociraptor_asset "$response" "darwin-arm64" "$velociraptor_version")
+if [ "$(echo "$darwin_amd64_asset" | jq -r '.url // empty')" = "" ] || \
+   [ "$(echo "$darwin_arm64_asset" | jq -r '.url // empty')" = "" ]; then
+  echo "Error: both darwin binaries must match host v${velociraptor_version} (per-arch version skew?)." >&2
   exit 1
 fi
-echo "Downloading Velociraptor darwin-amd64 binary..."
-download_with_retry "$darwin_amd64_url" "./velociraptor_darwin_amd64" || exit 1
-echo "Downloading Velociraptor darwin-arm64 binary..."
-download_with_retry "$darwin_arm64_url" "./velociraptor_darwin_arm64" || exit 1
+echo "Downloading Velociraptor darwin binaries..."
+download_velociraptor_asset "$darwin_amd64_asset" "./velociraptor_darwin_amd64" || exit 1
+download_velociraptor_asset "$darwin_arm64_asset" "./velociraptor_darwin_arm64" || exit 1
 
 # Download rcodesign to ad-hoc sign the macOS collectors on this Linux host.
 # Velociraptor's repack appends the embedded config to the darwin binary, which
@@ -248,11 +236,6 @@ fi
 echo "Building Windows x64 collector..."
 ./velociraptor collector --datastore ./datastore/ ./config/spec.yaml
 verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector.exe
-
-# Build the x86 (32-bit) collector using the same datastore
-echo "Building Windows x86 collector..."
-./velociraptor collector --datastore ./datastore/ ./config/spec_x86.yaml
-verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector_x86.exe
 
 # Build the Linux collector using the same datastore
 echo "Building Linux collector..."

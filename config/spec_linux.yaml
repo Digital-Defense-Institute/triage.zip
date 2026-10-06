@@ -1,4 +1,4 @@
-# Can be Windows, Windows_x86, Linux, MacOS, MacOSArm, Generic
+# Can be Windows, Linux, MacOS, MacOSArm, Generic
 OS: Linux
 
 # The list of artifacts and their args.
