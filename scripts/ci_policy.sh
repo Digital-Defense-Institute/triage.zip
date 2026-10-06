@@ -11,6 +11,8 @@ collector_changed=false
 if [[ ${GITHUB_EVENT_NAME:?} == push && ${GITHUB_REF:?} == refs/heads/main ]]; then
   # Checkout must include history. Compare the entire push, including deletions
   # and rename sources, rather than only the final commit of a multi-commit push.
+  # Missing before-history (e.g. after a force push) fails closed; use a manual
+  # main dispatch to rebuild/publish once the intended source is confirmed.
   before=${PUSH_BEFORE:?}
   if [[ $before == 0000000000000000000000000000000000000000 ]]; then
     before=$(git hash-object -t tree /dev/null)

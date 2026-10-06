@@ -106,6 +106,8 @@ class PublicationPolicyTests(unittest.TestCase):
         # Wiring guard; the event/path behavior is exercised above using Git.
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
         self.assertIn('fetch-depth: 0', workflow)
+        # Once policy approves a build, CI must not enable an independent skip.
+        self.assertNotIn('SKIP_IF_VERSION_UNCHANGED:', workflow)
         self.assertIn('run: bash scripts/ci_policy.sh >> "$GITHUB_OUTPUT"', workflow)
         for step in ('Commit version metadata', 'Delete existing latest release',
                      'Delete old latest tag', 'Create Latest Release'):

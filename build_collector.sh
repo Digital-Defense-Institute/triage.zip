@@ -44,10 +44,6 @@ if [ -f data/velociraptor-version.json ]; then
   stored_version=$(jq -r '.velociraptor_version // "unknown"' data/velociraptor-version.json 2>/dev/null || echo "unknown")
 fi
 
-if [ -n "${GITHUB_ENV:-}" ]; then
-  echo "VELO_VERSION=$velociraptor_version" >> "$GITHUB_ENV"
-fi
-
 # Skip build only if Velociraptor version AND all triage targets are unchanged
 if [ "$stored_version" = "$velociraptor_version" ] && [ "${TRIAGE_TARGETS_CHANGED:-false}" != "true" ] && [ "${LINUX_TRIAGE_TARGETS_CHANGED:-false}" != "true" ] && [ -n "${SKIP_IF_VERSION_UNCHANGED:-}" ]; then
   echo "Velociraptor version unchanged ($velociraptor_version) and all triage targets unchanged; skipping build."

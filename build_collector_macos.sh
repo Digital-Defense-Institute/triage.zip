@@ -55,10 +55,6 @@ if [ -f data/velociraptor-version.json ]; then
   stored_version=$(jq -r '.velociraptor_version // "unknown"' data/velociraptor-version.json 2>/dev/null || echo "unknown")
 fi
 
-if [ -n "${GITHUB_ENV:-}" ]; then
-  echo "VELO_VERSION=$velociraptor_version" >> "$GITHUB_ENV"
-fi
-
 if [ "$stored_version" = "$velociraptor_version" ] && [ -n "${SKIP_IF_VERSION_UNCHANGED:-}" ]; then
   echo "Velociraptor version unchanged ($velociraptor_version); skipping build."
   exit 0

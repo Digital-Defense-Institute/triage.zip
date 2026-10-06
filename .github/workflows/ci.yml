@@ -196,7 +196,6 @@ jobs:
       - name: Run build script
         if: steps.policy.outputs.build == 'true'
         env:
-          SKIP_IF_VERSION_UNCHANGED: ${{ github.event_name == 'schedule' && '1' || '' }}
           TRIAGE_ETAG: ${{ env.TRIAGE_ETAG }}
           TRIAGE_TARGETS_CHANGED: ${{ env.TRIAGE_TARGETS_CHANGED }}
           LINUX_TRIAGE_ETAG: ${{ env.LINUX_TRIAGE_ETAG }}
