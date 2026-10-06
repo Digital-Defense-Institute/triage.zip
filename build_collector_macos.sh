@@ -61,14 +61,7 @@ fi
 
 if [ "$stored_version" = "$velociraptor_version" ] && [ -n "${SKIP_IF_VERSION_UNCHANGED:-}" ]; then
   echo "Velociraptor version unchanged ($velociraptor_version); skipping build."
-  if [ -n "${GITHUB_ENV:-}" ]; then
-    echo "VELO_VERSION_CHANGED=false" >> "$GITHUB_ENV"
-  fi
   exit 0
-fi
-
-if [ -n "${GITHUB_ENV:-}" ]; then
-  echo "VELO_VERSION_CHANGED=true" >> "$GITHUB_ENV"
 fi
 
 # Create data directory for metadata (JSON written after artifact download)

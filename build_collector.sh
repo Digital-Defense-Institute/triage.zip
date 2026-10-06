@@ -51,9 +51,6 @@ fi
 # Skip build only if Velociraptor version AND all triage targets are unchanged
 if [ "$stored_version" = "$velociraptor_version" ] && [ "${TRIAGE_TARGETS_CHANGED:-false}" != "true" ] && [ "${LINUX_TRIAGE_TARGETS_CHANGED:-false}" != "true" ] && [ -n "${SKIP_IF_VERSION_UNCHANGED:-}" ]; then
   echo "Velociraptor version unchanged ($velociraptor_version) and all triage targets unchanged; skipping build."
-  if [ -n "${GITHUB_ENV:-}" ]; then
-    echo "VELO_VERSION_CHANGED=false" >> "$GITHUB_ENV"
-  fi
   exit 0
 fi
 
@@ -66,10 +63,6 @@ if [ "${TRIAGE_TARGETS_CHANGED:-false}" = "true" ]; then
 fi
 if [ "${LINUX_TRIAGE_TARGETS_CHANGED:-false}" = "true" ]; then
   echo "Build triggered: Linux.Triage.UAC artifact changed"
-fi
-
-if [ -n "${GITHUB_ENV:-}" ]; then
-  echo "VELO_VERSION_CHANGED=true" >> "$GITHUB_ENV"
 fi
 
 # Create data directory for metadata (JSON written after artifact download)
