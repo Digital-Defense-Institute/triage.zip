@@ -14,10 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]
 HELPERS = ROOT / "lib/collector_common.sh"
 
 
-def shell(code, *args):
+def shell(code, *args, cwd=None):
     return subprocess.run(
         ["bash", "-euo", "pipefail", "-c", '. "$1"; shift; ' + code,
-         "test", str(HELPERS), *map(str, args)], text=True, capture_output=True)
+         "test", str(HELPERS), *map(str, args)], text=True, capture_output=True, cwd=cwd)
 
 
 def asset(name):
@@ -135,6 +135,36 @@ class DownloadTests(unittest.TestCase):
 
     def test_missing_asset_fails_without_publishing(self):
         self.assert_failure(self.download(gzip.compress(ELF), updates={"name": None, "url": None}))
+
+
+class ArtifactVerificationTests(unittest.TestCase):
+    def test_old_and_new_verifier_flags_and_error_propagation(self):
+        for modern, exit_code in ((False, 0), (True, 0), (True, 1)):
+            with self.subTest(modern=modern, exit_code=exit_code), tempfile.TemporaryDirectory() as d:
+                root = Path(d)
+                for platform, name in (("Windows", "Windows.Triage.Targets"), ("Linux", "Linux.Triage.UAC")):
+                    artifact = root / f"datastore/artifact_definitions/{platform}/Triage/{name}.yaml"
+                    artifact.parent.mkdir(parents=True)
+                    artifact.write_text("name: " + name)
+                binary = root / "verifier"
+                binary.write_text("#!/bin/bash\n"
+                                  'if [[ "$*" == *--help* ]]; then\n'
+                                  + ("echo --nowall\n" if modern else "echo legacy-verifier\n")
+                                  + 'exit 0\nfi\nprintf "%s\\n" "$@" > args\n'
+                                  + f"exit {exit_code}\n")
+                binary.chmod(0o755)
+                result = shell('verify_triage_artifacts "$1"', binary, cwd=d)
+                self.assertEqual(result.returncode, exit_code, result.stderr)
+                args = (root / "args").read_text().splitlines()
+                self.assertEqual("--nowall" in args, modern)
+                self.assertIn("--builtin", args)
+                self.assertEqual(sum(a.endswith(".yaml") for a in args), 2)
+
+    def test_missing_bundle_fails_before_verification(self):
+        with tempfile.TemporaryDirectory() as d:
+            result = shell('verify_triage_artifacts /does/not/exist', cwd=d)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("missing Windows or Linux", result.stderr)
 
 
 class BuildContractTests(unittest.TestCase):

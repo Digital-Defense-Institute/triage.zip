@@ -18,6 +18,9 @@ and site download links consistent with these four outputs.
 - `lib/collector_common.sh` owns numeric release selection and direct binary
   downloads. Support raw and gzip assets; pin embedded macOS binaries to the
   exact host version. Validate downloaded bytes before decompression.
+- Verify both downloaded artifact bundles on both build paths. Upstream 0.77.3
+  made advisory warnings fatal; use the shared verifier helper to retain fatal
+  YAML/VQL errors while allowing upstream permission-declaration warnings.
 - Linux CI uses `build_collector.sh`; native macOS uses
   `build_collector_macos.sh`. Both must reject collector stubs and ad-hoc sign
   both macOS outputs.

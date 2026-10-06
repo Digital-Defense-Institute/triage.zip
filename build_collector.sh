@@ -210,27 +210,8 @@ fi
 jq -n "${METADATA_ARGS[@]}" "{$METADATA_FIELDS}" > data/velociraptor-version.json
 echo "Metadata written to data/velociraptor-version.json"
 
-# Validate artifact definitions (borrowed from upstream test.yml)
 echo "Validating artifact definitions..."
-ALL_ARTIFACT_FILES=()
-
-WINDOWS_ARTIFACT_GLOB="./datastore/artifact_definitions/Windows/Triage/*.yaml"
-if compgen -G "$WINDOWS_ARTIFACT_GLOB" > /dev/null; then
-  ALL_ARTIFACT_FILES+=($WINDOWS_ARTIFACT_GLOB)
-else
-  echo "Error: No Windows artifact definition files found matching $WINDOWS_ARTIFACT_GLOB" >&2
-  exit 1
-fi
-
-LINUX_ARTIFACT_GLOB="./datastore/artifact_definitions/Linux/Triage/*.yaml"
-if compgen -G "$LINUX_ARTIFACT_GLOB" > /dev/null; then
-  ALL_ARTIFACT_FILES+=($LINUX_ARTIFACT_GLOB)
-else
-  echo "Error: No Linux artifact definition files found matching $LINUX_ARTIFACT_GLOB" >&2
-  exit 1
-fi
-
-./velociraptor artifacts verify --builtin -v "${ALL_ARTIFACT_FILES[@]}"
+verify_triage_artifacts ./velociraptor
 
 # Build the x64 collector
 echo "Building Windows x64 collector..."

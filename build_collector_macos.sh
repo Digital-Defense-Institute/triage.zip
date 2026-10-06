@@ -144,6 +144,9 @@ echo "Linux.Triage.UAC.zip SHA256: $LINUX_ARTIFACT_SHA256"
 unzip -o Linux.Triage.UAC.zip -d ./datastore/artifact_definitions/Linux/Triage
 rm Linux.Triage.UAC.zip
 
+echo "Validating artifact definitions..."
+verify_triage_artifacts ./velociraptor
+
 # Capture build timestamp in ISO 8601 UTC format
 BUILD_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 

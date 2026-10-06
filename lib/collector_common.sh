@@ -129,6 +129,28 @@ download_velociraptor_asset() (
   mv "$tmp/binary" "$output" || return 1
 )
 
+# Validate both upstream artifact bundles without rewriting their definitions.
+# 0.77.3 made warnings fatal by default (upstream PR #5043). --nowall restores
+# the previous warning policy; YAML/VQL errors still fail verification. Older
+# versions lack that flag, so discover support rather than assuming it exists.
+verify_triage_artifacts() (
+  local binary="$1" help
+  local args=(artifacts verify --builtin -v)
+  shopt -s nullglob
+  local windows=(./datastore/artifact_definitions/Windows/Triage/*.yaml)
+  local linux=(./datastore/artifact_definitions/Linux/Triage/*.yaml)
+  if [ "${#windows[@]}" -eq 0 ] || [ "${#linux[@]}" -eq 0 ]; then
+    echo "Error: missing Windows or Linux artifact definitions" >&2
+    return 1
+  fi
+  help=$("$binary" artifacts verify --help 2>&1) || return 1
+  if [[ "$help" == *--nowall* ]]; then
+    args+=(--nowall)
+    echo "Verifying upstream artifacts: warnings are advisory; errors remain fatal."
+  fi
+  "$binary" "${args[@]}" "${windows[@]}" "${linux[@]}"
+)
+
 # Extract the content-identifying part of an nginx/S3-style ETag. These servers
 # emit ETags of the form "<mtime-hex>-<content-length-hex>" (optionally with a
 # content-coding suffix like "-gzip"); the mtime prefix can differ between CDN

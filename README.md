@@ -10,7 +10,7 @@
 
 The [CI workflow](.github/workflows/ci.yml) builds all four collectors on pushes to `main`, pull requests targeting `main`, and manual workflow dispatches. A scheduled run every Monday at 18:00 UTC checks the upstream Velociraptor version and the ETags of both `Windows.Triage.Targets` and `Linux.Triage.UAC`; scheduled builds are skipped when all three are unchanged.
 
-The build downloads the upstream Velociraptor binaries and triage artifact bundles, generates collectors from the platform configurations, and records version, artifact hashes/ETags, and build time in [data/velociraptor-version.json](data/velociraptor-version.json). Successful builds on `main` publish the four binaries to the `latest` GitHub release; pull request builds do not publish a release.
+The build downloads the upstream Velociraptor binaries and triage artifact bundles, validates artifact definitions (errors are fatal; upstream warnings are advisory), generates collectors from the platform configurations, and records version, artifact hashes/ETags, and build time in [data/velociraptor-version.json](data/velociraptor-version.json). Successful builds on `main` publish the four binaries to the `latest` GitHub release; pull request builds do not publish a release.
 
 ## Key Features
 
