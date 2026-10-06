@@ -55,30 +55,101 @@ download_with_retry() {
   return 1
 }
 
-# Print the {name,url} JSON object of the highest *numeric*-version Velociraptor
-# release asset matching arch suffix $2 (e.g. "linux-amd64", "darwin-arm64") in
-# the releases JSON $1. Sorting by parsed numeric version (not lexicographically)
-# means v0.76.10 correctly outranks v0.76.5 — the "latest" release contains many
-# patch versions as separate assets. Returns {"name":null,"url":null} if none
-# match, so callers can guard on a null/empty url.
+# Select the highest numeric version for an exact architecture, accepting raw
+# and gzip releases. Optional $3 pins the exact version (never silently falls
+# back to another patch). Prefer gzip deterministically when both forms exist.
+# Missing matches retain null fields so existing URL guards keep working.
 select_velociraptor_asset() {
-  local json="$1" arch="$2"
-  echo "$json" | jq -c --arg arch "$arch" '
+  local json="$1" arch="$2" version="${3:-}"
+  printf '%s\n' "$json" | jq -c --arg arch "$arch" --arg version "$version" '
     [.assets[]
-     | select(.name | test("velociraptor-v[0-9.]+-" + $arch + "$"))
-     | {name: .name,
-        url: .browser_download_url,
-        ver: (.name | capture("velociraptor-v(?<v>[0-9]+(\\.[0-9]+)*)-" + $arch + "$").v
-                    | split(".") | map(tonumber))}]
-    | sort_by(.ver) | last | {name, url}'
+     | . as $asset
+     | (.name | capture("^velociraptor-v(?<v>[0-9]+(\\.[0-9]+)*)-(?<arch>[a-z0-9-]+)(?<gz>\\.gz)?$")) as $match
+     | select($match.arch == $arch)
+     | select($version == "" or $match.v == $version)
+     | {name: $asset.name, url: $asset.browser_download_url,
+        version: $match.v, size: $asset.size, digest: $asset.digest,
+        ver: ($match.v | split(".") | map(tonumber)),
+        compressed: ($match.gz != null)}]
+    | sort_by(.ver, .compressed) | last | {name, url, version, size, digest}'
 }
 
-# Print the download URL of the asset whose name is exactly $2 in releases JSON
-# $1; empty if absent. Used to pin a binary to one exact, known version.
+# Exact-name lookup retained for callers that already know the full asset name.
 asset_url_by_name() {
   local json="$1" name="$2"
   echo "$json" | jq -r --arg n "$name" '.assets[] | select(.name == $n) | .browser_download_url'
 }
+
+# Validate transport bytes before decompression, then reject non-executables.
+# The GitHub SHA256 digest is checked when supplied (older releases omit it).
+# Use a private temporary directory beside the destination and publish only a
+# fully validated binary, leaving an existing destination intact on any failure.
+download_velociraptor_asset() (
+  local asset="$1" output="$2" name url size digest tmp actual ftype
+  name=$(printf '%s' "$asset" | jq -er '.name') || return 1
+  url=$(printf '%s' "$asset" | jq -er '.url | select(length > 0)') || return 1
+  size=$(printf '%s' "$asset" | jq -r '.size // empty') || return 1
+  digest=$(printf '%s' "$asset" | jq -r '.digest // empty') || return 1
+  tmp=$(mktemp -d "${output}.download.XXXXXX") || return 1
+  trap 'rm -rf "$tmp"' EXIT
+  download_with_retry "$url" "$tmp/asset" || return 1
+  if [ ! -s "$tmp/asset" ]; then
+    echo "Error: empty Velociraptor download: $name" >&2
+    return 1
+  fi
+  if [ -n "$size" ] && [ "$(wc -c < "$tmp/asset" | tr -d ' ')" != "$size" ]; then
+    echo "Error: Velociraptor download size mismatch: $name" >&2
+    return 1
+  fi
+  if [ -n "$digest" ]; then
+    case "$digest" in
+      sha256:*) ;;
+      *) echo "Error: unsupported asset digest: $digest" >&2; return 1 ;;
+    esac
+    if command -v sha256sum >/dev/null 2>&1; then
+      actual=$(sha256sum "$tmp/asset") || return 1
+    else
+      actual=$(shasum -a 256 "$tmp/asset") || return 1
+    fi
+    if [ "${actual%% *}" != "${digest#sha256:}" ]; then
+      echo "Error: Velociraptor download SHA256 mismatch: $name" >&2
+      return 1
+    fi
+  fi
+  case "$name" in
+    *.gz) gzip -dc "$tmp/asset" > "$tmp/binary" || return 1 ;;
+    *) mv "$tmp/asset" "$tmp/binary" || return 1 ;;
+  esac
+  ftype=$(file -b "$tmp/binary") || return 1
+  case "$name:$ftype" in
+    *-linux-amd64*:ELF*x86-64*|*-darwin-amd64*:Mach-O*x86_64*|*-darwin-arm64*:Mach-O*arm64*) ;;
+    *) echo "Error: unexpected executable type for $name: $ftype" >&2; return 1 ;;
+  esac
+  chmod +x "$tmp/binary" || return 1
+  mv "$tmp/binary" "$output" || return 1
+)
+
+# Validate both upstream artifact bundles without rewriting their definitions.
+# 0.77.3 made warnings fatal by default (upstream PR #5043). --nowall restores
+# the previous warning policy; YAML/VQL errors still fail verification. Older
+# versions lack that flag, so discover support rather than assuming it exists.
+verify_triage_artifacts() (
+  local binary="$1" help
+  local args=(artifacts verify --builtin -v)
+  shopt -s nullglob
+  local windows=(./datastore/artifact_definitions/Windows/Triage/*.yaml)
+  local linux=(./datastore/artifact_definitions/Linux/Triage/*.yaml)
+  if [ "${#windows[@]}" -eq 0 ] || [ "${#linux[@]}" -eq 0 ]; then
+    echo "Error: missing Windows or Linux artifact definitions" >&2
+    return 1
+  fi
+  help=$("$binary" artifacts verify --help 2>&1) || return 1
+  if [[ "$help" == *--nowall* || "$help" == *'--[no-]nowall'* ]]; then
+    args+=(--nowall)
+    echo "Verifying upstream artifacts: warnings are advisory; errors remain fatal."
+  fi
+  "$binary" "${args[@]}" "${windows[@]}" "${linux[@]}"
+)
 
 # Extract the content-identifying part of an nginx/S3-style ETag. These servers
 # emit ETags of the form "<mtime-hex>-<content-length-hex>" (optionally with a
