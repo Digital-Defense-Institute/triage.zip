@@ -149,7 +149,7 @@ class ArtifactVerificationTests(unittest.TestCase):
                 binary = root / "verifier"
                 binary.write_text("#!/bin/bash\n"
                                   'if [[ "$*" == *--help* ]]; then\n'
-                                  + ("echo --nowall\n" if modern else "echo legacy-verifier\n")
+                                  + ("echo '--[no-]nowall'\n" if modern else "echo legacy-verifier\n")
                                   + 'exit 0\nfi\nprintf "%s\\n" "$@" > args\n'
                                   + f"exit {exit_code}\n")
                 binary.chmod(0o755)

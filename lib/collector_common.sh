@@ -144,7 +144,7 @@ verify_triage_artifacts() (
     return 1
   fi
   help=$("$binary" artifacts verify --help 2>&1) || return 1
-  if [[ "$help" == *--nowall* ]]; then
+  if [[ "$help" == *--nowall* || "$help" == *'--[no-]nowall'* ]]; then
     args+=(--nowall)
     echo "Verifying upstream artifacts: warnings are advisory; errors remain fatal."
   fi
