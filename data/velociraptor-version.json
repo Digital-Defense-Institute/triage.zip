@@ -1,8 +1,8 @@
 {
   "velociraptor_version": "0.77.3",
-  "triage_targets_sha256": "e2fd890c73c6e52c11c7a2223ad8078451c282493d7d4049ecab18f610368e0f",
-  "linux_triage_targets_sha256": "652e81c5f65bcedd00e802dba69566dc3f46cc713a1d65cc93cff6d9d44e6369",
-  "last_build_timestamp": "2026-10-06T07:38:39Z",
-  "triage_targets_etag": "\"6ac3080c-c23b\"",
-  "linux_triage_targets_etag": "\"6ac3080c-3b8a\""
+  "triage_targets_sha256": "d32d7e4f881af1b925c9d26f950805394422575ef2448661a6febd79160ad038",
+  "linux_triage_targets_sha256": "25d06947fd52a177500c953de0598af8cd7aeeed9b79c60194ef669fe40f04eb",
+  "last_build_timestamp": "2026-10-12T18:08:24Z",
+  "triage_targets_etag": "\"6ac6375b-c233\"",
+  "linux_triage_targets_etag": "\"6ac6375b-3b89\""
 }
