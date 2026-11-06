@@ -46,15 +46,87 @@ def upload_error_category(error):
                                        'cannot find the path specified',
                                        'no such file or directory', 'file does not exist')):
         return 'missing_file'
+    # Error messages originate in Go io/os/syscall and the NTFS accessor.
+    # Fixed classifications are diagnostics only, never an acceptance policy.
+    if 'unexpected eof' in message:
+        return 'unexpected_eof'
+    if re.search(r'\beof\b', message):
+        return 'eof'
+    signatures = {
+        'invalid_parameter': ('invalid argument', 'parameter is incorrect', 'invalid parameter'),
+        'invalid_handle': ('bad file descriptor', 'handle is invalid', 'invalid handle', 'file already closed'),
+        'directory': ('is a directory', 'directory name is invalid'),
+        'unsupported': ('not supported', 'not implemented', 'invalid function'),
+        'ntfs_attribute': ('attribute not found', 'no data attribute', 'no $data', 'unable to find attribute'),
+        'ntfs_compression': ('decompression', 'lznt1', 'compressed block'),
+        'read_fault': ('read fault', 'cannot read from the specified device', 'reached the end of the file'),
+        'seek_error': ('seek error', 'seek: ', 'error seeking', 'attempt to move the file pointer'),
+        'resource_exhausted': ('not enough memory', 'not enough storage', 'insufficient system resources', 'too many open files'),
+        'path_error': ('filename, directory name, or volume label syntax is incorrect', 'file name is too long'),
+        'ntfs_format': ('no ntfs magic', 'mft magic', 'unknown mft cluster size'),
+        'device_read': ('input/output error', 'i/o device error', 'device is not ready',
+                        'device is not functioning', 'data error (cyclic redundancy check)'),
+        'negative_offset': ('negative offset', 'negative position'),
+    }
+    for category, phrases in signatures.items():
+        if any(phrase in message for phrase in phrases):
+            return category
+    if message.strip() in ('file not found', 'not found'):
+        # NTFS accessor OpenWithOSPath emits these exact fixed messages.
+        return 'missing_file'
     return 'other'
 
 
-def record_upload_error(diagnostics, upload):
+def upload_target_type(source):
+    # Return only fixed names of NTFS system metadata or known file formats.
+    # Never report source basenames, extensions outside this set, or full paths.
+    if not isinstance(source, str):
+        return 'other'
+    basename = source.replace('\\', '/').rsplit('/', 1)[-1].casefold()
+    stem = basename.split(':', 1)[0]
+    ntfs_names = {'$badclus', '$boot', '$mft', '$mftmirr', '$logfile', '$bitmap',
+                  '$secure', '$upcase', '$attrdef', '$volume', '$usnjrnl',
+                  '$objid', '$quota', '$reparse', '$t', '$txflog', '$tops'}
+    if stem in ntfs_names:
+        return 'ntfs_' + stem[1:]
+    extension = basename.rsplit('.', 1)[-1] if '.' in basename else ''
+    if extension in {'evtx', 'pf', 'lnk', 'exe', 'dll', 'sys', 'log', 'dat', 'db', 'sqlite'}:
+        return 'extension_' + extension
+    return 'other'
+
+
+def record_upload_error(diagnostics, upload, source=None, archive=None):
     category = upload_error_category(upload.get('Error'))
     summary = diagnostics.setdefault(category, {
         'count': 0, 'stored_name_present': 0, 'nonzero_stored_size': 0,
-        'stored_bytes': 0, 'malformed_stored_size': 0})
+        'stored_bytes': 0, 'malformed_stored_size': 0,
+        'archive_member_present': 0, 'archive_bytes': 0,
+        'nonzero_archive_member': 0, 'logical_size_positive': 0,
+        'logical_bytes': 0, 'accessors': {}, 'target_types': {}})
     summary['count'] += 1
+    stored_name = upload.get('StoredName')
+    accessor = 'unknown'
+    if isinstance(stored_name, str):
+        components = stored_name.lstrip('/').split('/')
+        if len(components) > 1 and components[0] == 'uploads':
+            candidate = components[1].casefold()
+            accessor = candidate if candidate in {'auto', 'ntfs', 'file', 'sparse', 'data', 'mft', 'vss'} else 'other'
+        if archive is not None:
+            try:
+                info = archive.getinfo(stored_name.lstrip('/'))
+            except KeyError:
+                pass
+            else:
+                summary['archive_member_present'] += 1
+                summary['archive_bytes'] += info.file_size
+                summary['nonzero_archive_member'] += info.file_size > 0
+    summary['accessors'][accessor] = summary['accessors'].get(accessor, 0) + 1
+    target_type = upload_target_type(source)
+    summary['target_types'][target_type] = summary['target_types'].get(target_type, 0) + 1
+    logical_size = upload.get('Size', 0)
+    if isinstance(logical_size, int) and not isinstance(logical_size, bool) and logical_size > 0:
+        summary['logical_size_positive'] += 1
+        summary['logical_bytes'] += logical_size
     summary['stored_name_present'] += bool(upload.get('StoredName'))
     size = upload.get('StoredSize', 0)
     if isinstance(size, int) and not isinstance(size, bool) and size >= 0:
@@ -166,7 +238,7 @@ def validate(path):
                         continue
                     errored = bool(upload.get('Error'))
                     if errored:
-                        record_upload_error(upload_errors, upload)
+                        record_upload_error(upload_errors, upload, row.get('SourceFile'), archive)
                     stored_name = upload.get('StoredName')
                     if not stored_name:
                         continue

@@ -223,7 +223,7 @@ class WindowsCollectionTests(unittest.TestCase):
         self.assertNotIn(EVIDENCE, result.stdout + result.stderr + report_path.read_text())
 
     def test_unknown_and_localized_upload_errors_remain_other(self):
-        for error in ('The device is not ready.', 'Zugriff verweigert', {'Error': 'bad'}):
+        for error in ('Unrecognized failure.', 'Zugriff verweigert', {'Error': 'bad'}):
             self.assertEqual(validator.upload_error_category(error), 'other')
 
     def test_omitted_zero_stored_size_matches_upstream(self):
@@ -271,6 +271,49 @@ class WindowsCollectionTests(unittest.TestCase):
         self.assertEqual(sizes['malformed_stored_size'], 1)
         self.assertEqual(diagnostic['verified_triage_uploads'], 1)
         self.assertNotIn('SECRET', json.dumps(diagnostic))
+
+    def test_fixed_upload_error_signatures(self):
+        cases = {
+            'unexpected EOF': 'unexpected_eof', 'EOF': 'eof',
+            'The parameter is incorrect.': 'invalid_parameter',
+            'read SECRET: bad file descriptor': 'invalid_handle',
+            'SECRET is a directory': 'directory',
+            'Not supported': 'unsupported', 'No NTFS Magic': 'ntfs_format',
+            'File not found': 'missing_file', 'Not found': 'missing_file',
+            'attribute not found': 'ntfs_attribute',
+            'LZNT1 decompression error': 'ntfs_compression',
+            'The device is not ready.': 'device_read',
+            'A disk read fault occurred': 'read_fault',
+            'seek: The system cannot move the file pointer': 'seek_error',
+            'not enough memory': 'resource_exhausted',
+        }
+        for error, category in cases.items():
+            with self.subTest(error=error):
+                self.assertEqual(validator.upload_error_category(error), category)
+
+    def test_error_diagnostics_use_only_fixed_path_families(self):
+        for source, target in ((r'\\.\C:\$BadClus:$Bad', 'ntfs_badclus'),
+                               (r'\\.\C:\$Extend\$UsnJrnl:$J', 'ntfs_usnjrnl'),
+                               (r'C:\SECRET\private.evtx', 'extension_evtx'),
+                               (r'C:\SECRET\private.UNKNOWN', 'other')):
+            with self.subTest(source=source):
+                self.files = fixture()
+                self.files['uploads/ntfs/system'] = b''
+                self.files[TRIAGE_RESULT] += jsonl({'SourceFile': source, 'Upload': {
+                    'Error': 'unexpected EOF SECRET', 'StoredName': '/uploads/ntfs/system', 'Size': 500}})
+                self.write()
+                with self.assertRaises(validator.InvalidCollection) as failure:
+                    validator.validate(self.path)
+                diagnostic = failure.exception.diagnostics
+                summary = diagnostic['upload_errors']['unexpected_eof']
+                self.assertEqual(summary['target_types'], {target: 1})
+                self.assertEqual(summary['accessors'], {'ntfs': 1})
+                self.assertEqual(summary['archive_member_present'], 1)
+                self.assertEqual(summary['archive_bytes'], 0)
+                self.assertEqual(summary['logical_bytes'], 500)
+                self.assertEqual(summary['logical_size_positive'], 1)
+                self.assertNotIn('SECRET', json.dumps(diagnostic))
+                self.assertNotIn('private', json.dumps(diagnostic))
 
     def test_row_count_detects_missing_result_stream(self):
         self.context(total_collected_rows=100)
