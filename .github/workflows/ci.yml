@@ -304,9 +304,74 @@ jobs:
           if-no-files-found: warn
           retention-days: 3
 
+  linux_validate:
+    needs: build
+    if: needs.build.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    outputs:
+      collector_sha256: ${{ steps.validate.outputs.collector_sha256 }}
+    steps:
+      - name: Checkout validation scripts
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test Linux validation helpers
+        run: python -B -m unittest discover -s tests -p 'test_linux*.py' -v
+
+      - name: Download exact build payloads
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: release-inputs
+          merge-multiple: true
+
+      - name: Run and validate Linux collection
+        id: validate
+        run: |
+          set -euo pipefail
+          (cd release-inputs && sha256sum --check --strict SHA256SUMS)
+          COLLECTOR=$(realpath release-inputs/Velociraptor_Triage_Collector_Linux)
+          BEFORE=$(sha256sum "$COLLECTOR")
+          BEFORE=${BEFORE%% *}
+          chmod +x "$COLLECTOR"
+          # Keep setup-python's interpreter when sudo applies its secure PATH.
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT "$(command -v python)" \
+            scripts/run_linux_collection.py --collector "$COLLECTOR" \
+            --output-directory "$RUNNER_TEMP/linux-collection" \
+            --report-directory "$GITHUB_WORKSPACE/linux-validation" --timeout-seconds 2700
+          python - "$BEFORE" <<'PYTHON'
+          import json
+          import sys
+          from pathlib import Path
+          report = json.loads(Path('linux-validation/validation-report.json').read_text())
+          if report.get('valid') is not True or report.get('collector_sha256') != sys.argv[1]:
+              raise SystemExit('Linux validation report does not match the tested collector')
+          PYTHON
+          AFTER=$(sha256sum "$COLLECTOR")
+          AFTER=${AFTER%% *}
+          test "$BEFORE" = "$AFTER"
+          echo "collector_sha256=$AFTER" >> "$GITHUB_OUTPUT"
+
+      # Never upload the collection ZIP, UAC output, or evidence-bearing logs.
+      - name: Upload Linux validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-validation
+          path: linux-validation/validation-report.json
+          if-no-files-found: warn
+          retention-days: 3
+
   publish:
-    needs: [build, windows_validate]
-    if: needs.build.outputs.publish == 'true' && needs.windows_validate.result == 'success'
+    needs: [build, windows_validate, linux_validate]
+    if: needs.build.outputs.publish == 'true' && needs.windows_validate.result == 'success' && needs.linux_validate.result == 'success'
     # Serialize latest-release replacement; never cancel an active publication.
     concurrency:
       group: triage-latest-publication
@@ -330,12 +395,15 @@ jobs:
 
       - name: Verify tested payloads and publication source
         env:
-          VALIDATED_SHA256: ${{ needs.windows_validate.outputs.collector_sha256 }}
+          VALIDATED_WINDOWS_SHA256: ${{ needs.windows_validate.outputs.collector_sha256 }}
+          VALIDATED_LINUX_SHA256: ${{ needs.linux_validate.outputs.collector_sha256 }}
         run: |
           set -euo pipefail
           (cd release-inputs && sha256sum --check --strict SHA256SUMS)
-          ACTUAL_SHA256=$(sha256sum release-inputs/Velociraptor_Triage_Collector.exe)
-          test "${ACTUAL_SHA256%% *}" = "$VALIDATED_SHA256"
+          WINDOWS_SHA256=$(sha256sum release-inputs/Velociraptor_Triage_Collector.exe)
+          test "${WINDOWS_SHA256%% *}" = "$VALIDATED_WINDOWS_SHA256"
+          LINUX_SHA256=$(sha256sum release-inputs/Velociraptor_Triage_Collector_Linux)
+          test "${LINUX_SHA256%% *}" = "$VALIDATED_LINUX_SHA256"
           # Do not publish stale source or commit metadata over a newer main.
           git fetch origin main
           test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
@@ -368,7 +436,7 @@ jobs:
             ./release-inputs/Velociraptor_Triage_Collector_macOS_ARM \
             --target "$GITHUB_SHA" \
             --title "Latest Release" \
-            --notes "Built with Velociraptor $VERSION; Windows collection validation passed." \
+            --notes "Built with Velociraptor $VERSION; Windows and Linux collection validation passed." \
             --latest
 
       - name: Commit version metadata
