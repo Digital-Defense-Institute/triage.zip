@@ -12,6 +12,10 @@ The [CI workflow](.github/workflows/ci.yml) builds all four collectors on pushes
 
 The build downloads the upstream Velociraptor binaries and triage artifact bundles, validates artifact definitions (errors are fatal; upstream warnings are advisory), generates collectors from the platform configurations, and records version, artifact hashes/ETags, and build time in [data/velociraptor-version.json](data/velociraptor-version.json). Successful builds on `main` publish the four binaries to the `latest` GitHub release only when the upstream version or artifact ETags change, collector inputs change across the push, or a manual run is requested. Docs/site-only pushes still validate the build but do not republish unchanged inputs. Pull request builds never publish. Version metadata is committed only after release creation succeeds.
 
+Before publication, CI runs the newly built Windows executable with its embedded production configuration on a disposable `windows-2022` runner as Administrator. Collection has a 45-minute execution limit. The validator checks ZIP integrity, completed collection metadata, structured results and collection errors, meaningful Autoruns output, and triage upload records backed by collected file bytes. A failure blocks publication. The publish job downloads the same immutable build artifact and checks that its Windows executable matches the SHA256 of the executable tested on Windows.
+
+Collection evidence and raw process logs stay on the disposable runner and are deleted after validation. CI retains only the validation summary for three days. This Windows smoke test covers the runner image; it does not establish compatibility with every Windows version, exercise VSS when no shadow copies exist, validate Linux/macOS execution, or test importing the container into a server.
+
 ## Key Features
 
 - **Offline collection:** Pre-packaged artifacts let responders collect evidence without a Velociraptor server connection.

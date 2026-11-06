@@ -102,18 +102,84 @@ class PublicationPolicyTests(unittest.TestCase):
         self.assertEqual(result.stdout, '')
         self.assertIn('unable to compare', result.stderr)
 
-    def test_all_release_mutations_use_prebuild_policy(self):
-        # Wiring guard; the event/path behavior is exercised above using Git.
+    def workflow_jobs(self):
+        # No YAML dependency: job keys are the workflow's two-space mapping.
+        import re
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
-        self.assertIn('fetch-depth: 0', workflow)
-        # Once policy approves a build, CI must not enable an independent skip.
+        matches = list(re.finditer(r'^  ([a-z_]+):\n', workflow[workflow.index('jobs:'):], re.M))
+        jobs = workflow[workflow.index('jobs:'):]
+        return {match.group(1): jobs[match.start():matches[i + 1].start() if i + 1 < len(matches) else len(jobs)]
+                for i, match in enumerate(matches)}
+
+    def test_publication_requires_policy_and_successful_windows_validation(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        jobs = self.workflow_jobs()
+        self.assertEqual(set(jobs), {'build', 'windows_validate', 'publish'})
+        build, windows, publish = (jobs[name] for name in ('build', 'windows_validate', 'publish'))
+        self.assertIn('fetch-depth: 0', build)
         self.assertNotIn('SKIP_IF_VERSION_UNCHANGED:', workflow)
-        self.assertIn('run: bash scripts/ci_policy.sh >> "$GITHUB_OUTPUT"', workflow)
+        self.assertIn('run: bash scripts/ci_policy.sh >> "$GITHUB_OUTPUT"', build)
+        self.assertIn('build: ${{ steps.policy.outputs.build }}', build)
+        self.assertIn('publish: ${{ steps.policy.outputs.publish }}', build)
+        self.assertIn('needs: build', windows)
+        self.assertIn("if: needs.build.outputs.build == 'true'", windows)
+        self.assertIn('runs-on: windows-2022', windows)
+        self.assertIn('needs: [build, windows_validate]', publish)
+        self.assertIn("if: needs.build.outputs.publish == 'true' && needs.windows_validate.result == 'success'", publish)
+        # A failed/timed out/cancelled/skipped Windows job cannot enter publish.
+        self.assertNotIn('always()', publish)
+        self.assertLess(build.index('id: policy'), build.index('- name: Run build script'))
         for step in ('Commit version metadata', 'Delete existing latest release',
                      'Delete old latest tag', 'Create Latest Release'):
-            self.assertIn(f"- name: {step}\n        if: steps.policy.outputs.publish == 'true'", workflow)
-        self.assertLess(workflow.index('id: policy'), workflow.index('- name: Run build script'))
-        self.assertLess(workflow.index('- name: Create Latest Release'),
-                        workflow.index('- name: Commit version metadata'))
+            self.assertIn(f'- name: {step}', publish)
+            self.assertNotIn(f'- name: {step}', build + windows)
+        self.assertLess(publish.index('- name: Verify tested payloads'),
+                        publish.index('- name: Delete existing latest release'))
+        self.assertLess(publish.index('- name: Create Latest Release'),
+                        publish.index('- name: Commit version metadata'))
         for script in ('build_collector.sh', 'build_collector_macos.sh'):
             self.assertNotIn('VELO_VERSION_CHANGED=', (ROOT / script).read_text())
+
+    def test_same_immutable_build_payloads_are_validated_and_published(self):
+        jobs = self.workflow_jobs()
+        build, windows, publish = (jobs[name] for name in ('build', 'windows_validate', 'publish'))
+        self.assertIn('artifact_id: ${{ steps.package.outputs.artifact-id }}', build)
+        for consumer in (windows, publish):
+            self.assertIn('artifact-ids: ${{ needs.build.outputs.artifact_id }}', consumer)
+            self.assertNotIn('bash build_collector.sh', consumer)
+        self.assertIn('> SHA256SUMS', build)
+        self.assertIn('Get-Content release-inputs/SHA256SUMS', windows)
+        self.assertIn('sha256sum --check --strict SHA256SUMS', publish)
+        self.assertIn('VALIDATED_SHA256: ${{ needs.windows_validate.outputs.collector_sha256 }}', publish)
+        self.assertIn('test "${ACTUAL_SHA256%% *}" = "$VALIDATED_SHA256"', publish)
+        self.assertIn('test "$(git rev-parse origin/main)" = "$GITHUB_SHA"', publish)
+        self.assertIn('cp release-inputs/data/velociraptor-version.json data/velociraptor-version.json', publish)
+        self.assertIn('--target "$GITHUB_SHA"', publish)
+        for output in ('Velociraptor_Triage_Collector.exe', 'Velociraptor_Triage_Collector_Linux',
+                       'Velociraptor_Triage_Collector_macOS', 'Velociraptor_Triage_Collector_macOS_ARM'):
+            self.assertIn('./release-inputs/' + output, publish)
+        self.assertNotIn('./datastore/', publish)
+
+    def test_collector_execution_is_bounded_and_evidence_is_not_uploaded(self):
+        jobs = self.workflow_jobs()
+        build, windows, publish = (jobs[name] for name in ('build', 'windows_validate', 'publish'))
+        self.assertIn('timeout-minutes: 55', windows)
+        self.assertIn('-TimeoutSeconds 2700', windows)
+        self.assertIn('./scripts/run_windows_collection.ps1 -Collector $collector', windows)
+        self.assertIn('-OutputDirectory "$env:RUNNER_TEMP/windows-collection"', windows)
+        self.assertIn('if ($LASTEXITCODE -ne 0)', windows)
+        self.assertIn('$report.valid -ne $true -or $report.collector_sha256 -ne $before', windows)
+        self.assertIn('if ($before -ne $after)', windows)
+        self.assertIn("python -B -m unittest discover -s tests -p 'test_windows*.py' -v", windows)
+        self.assertIn('path: windows-validation/validation-report.json', windows)
+        self.assertIn('retention-days: 3', windows)
+        self.assertNotIn('path: datastore', build)
+        self.assertNotIn('path: windows-collection', windows)
+        self.assertNotIn('path: windows-validation/', windows.replace('path: windows-validation/validation-report.json', ''))
+        # Read-only tokens on jobs that execute freshly downloaded tools/data.
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertIn('permissions:\n  contents: read', workflow)
+        self.assertIn('permissions:\n      contents: write', publish)
+        self.assertNotIn('contents: write', build + windows)
+        self.assertIn('persist-credentials: false', build)
+        self.assertIn('persist-credentials: false', windows)
