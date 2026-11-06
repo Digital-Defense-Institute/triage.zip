@@ -1,5 +1,6 @@
 [CmdletBinding()]
-param([string]$Inputs = 'benchmark-inputs', [string]$ReportDirectory = 'parser-benchmark-report')
+param([string]$Inputs = 'benchmark-inputs', [string]$ReportDirectory = 'parser-benchmark-report',
+      [ValidateSet('paired', 'baseline', 'parsers')][string]$Variant = 'paired')
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -14,7 +15,9 @@ $reportPath = Join-Path $ReportDirectory 'benchmark.json'
 $results = [Collections.Generic.List[object]]::new()
 $report = @{
     valid = $false
-    methodology = 'Three paired runs on one hosted VM; order baseline/parsers, parsers/baseline, baseline/parsers. Process wall time excludes ZIP validation and cleanup.'
+    methodology = $(if ($Variant -eq 'paired') { 'Three paired runs on one hosted VM; order baseline/parsers, parsers/baseline, baseline/parsers. Process wall time excludes ZIP validation and cleanup.' } else { 'One first collection on a fresh hosted runner; process wall time excludes ZIP validation and cleanup.' })
+    mode = $Variant
+    repeat = $env:BENCHMARK_REPEAT
     validator_revision = 'eebda5037e7c91f8408cc10470da404ab44e3a64'
     runner_image = $env:ImageOS
     runner_image_version = $env:ImageVersion
@@ -34,6 +37,7 @@ try {
         }
     }
     $orders = @(@('baseline', 'parsers'), @('parsers', 'baseline'), @('baseline', 'parsers'))
+    if ($Variant -ne 'paired') { $orders = @(,@($Variant)) }
     for ($pair = 0; $pair -lt $orders.Count; $pair++) {
         foreach ($variant in $orders[$pair]) {
             $name = "pair-$($pair + 1)-$variant"

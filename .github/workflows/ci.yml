@@ -47,9 +47,17 @@ jobs:
           compression-level: 0
           if-no-files-found: error
   benchmark:
+    name: fresh-${{ matrix.variant }}-${{ matrix.repeat }}
     needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [baseline, parsers]
+        repeat: [1, 2, 3]
     runs-on: windows-2022
-    timeout-minutes: 70
+    timeout-minutes: 20
+    env:
+      BENCHMARK_REPEAT: ${{ matrix.repeat }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,14 +72,14 @@ jobs:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
           path: benchmark-inputs
           merge-multiple: true
-      - name: Run three paired production collections
+      - name: Run first production collection on fresh runner
         shell: pwsh
-        run: ./scripts/run_parser_benchmark.ps1
+        run: ./scripts/run_parser_benchmark.ps1 -Variant '${{ matrix.variant }}'
       - name: Retain numeric reports only
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: parser-runtime-report
+          name: parser-runtime-report-${{ matrix.variant }}-${{ matrix.repeat }}
           path: parser-benchmark-report/
           if-no-files-found: warn
           retention-days: 3
