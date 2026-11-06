@@ -20,7 +20,7 @@ These proposals are under review and are not included in the current downloads.
 - Preserve raw Zone.Identifier streams under user profiles, with a 20-directory recursion limit and a 64 KiB per-stream size selection limit. The stream's parent file is not acquired by this pass.
 - Hosted Windows tests found small warm-run parser overhead; first-collection timings varied substantially between runners. Workstation impact remains workload-dependent. Broader staging-file acquisition and ListSync/Search exclusions are separate follow-ups awaiting upstream support.
 
-Sources: [Issue #20](https://github.com/Digital-Defense-Institute/triage.zip/issues/20)
+Sources: [Issue #20](https://github.com/Digital-Defense-Institute/triage.zip/issues/20); [PR #23 (open)](https://github.com/Digital-Defense-Institute/triage.zip/pull/23)
 
 ### Check collection results before publication
 
