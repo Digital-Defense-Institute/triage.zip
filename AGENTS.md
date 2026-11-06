@@ -46,3 +46,18 @@ host requires separate authorization.
 Check all four output formats and both macOS signatures. A local macOS build
 does not prove Linux CI signing works; require the PR build to pass as well.
 For site edits, check download targets, OS tabs, and narrow-screen layout.
+
+## Collector changelog
+
+`data/changelog.json` is the single changelog source. Run
+`python3 site/render_changelog.py` to regenerate `CHANGELOG.md` and
+`changelog.html`; `--check` verifies that both outputs are current. The generator
+belongs under `site/`, not `scripts/`, so site-only edits do not become collector
+publication inputs. Keep a prominent changelog link beside the downloads.
+
+Document collector behavior/platform/default changes as undated proposals during
+review. Promote them to a dated entry only after publication is verified, using
+the UTC publication date and source links. Historical backfill uses verified
+main-branch dates and must retain the visible caveat about publication timing.
+Keep upstream-only work and unmerged branches out of dated history. Visually
+check platform filtering, anchor links, and desktop/mobile layouts after site edits.

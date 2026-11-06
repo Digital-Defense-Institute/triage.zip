@@ -1,0 +1,67 @@
+.changelog-container { max-width: 1060px; padding-top: 1.75rem; }
+.changelog-nav { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem 0 2.8rem; }
+.changelog-nav a { color: var(--muted); text-decoration: none; font-size: .9rem; }
+.changelog-nav > div { display: flex; gap: 1.65rem; }
+.changelog-nav .changelog-brand { color: var(--text); font-size: 1.4rem; font-weight: 600; letter-spacing: -.05em; }
+.changelog-brand span { color: var(--primary-accent); }
+.changelog-nav a:hover, .change-permalink:hover { color: var(--primary-accent); }
+.changelog-header { max-width: 760px; padding: 1rem 0 2rem; }
+.changelog-header h1 { font-size: clamp(2.4rem, 6vw, 4rem); line-height: 1.12; letter-spacing: -.045em; margin: 0 0 1rem; }
+.changelog-lede { font-size: 1.15rem; color: #d5deee; max-width: 42rem; margin: 0 0 1rem; }
+.changelog-explainer { max-width: 43rem; color: var(--muted); font-size: .94rem; margin: 0; }
+.changelog-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 1rem; border-top: 1px solid var(--card-border); padding-top: 1.3rem; }
+.changelog-filters { display: flex; gap: .4rem; flex-wrap: wrap; }
+.changelog-filters button { font: inherit; font-size: .87rem; padding: .45rem .9rem; border: 1px solid transparent; border-radius: 7px; color: var(--muted); background: transparent; cursor: pointer; }
+.changelog-filters button:hover { color: var(--text); background: rgba(255,255,255,.05); }
+.changelog-filters button[aria-pressed="true"] { color: var(--text); border-color: rgba(127,91,255,.6); background: rgba(127,91,255,.17); }
+.changelog-years { display: flex; gap: 1rem; }
+.changelog-years a { font-size: .88rem; text-decoration: none; color: var(--muted); }
+.changelog-years a:hover { color: var(--primary-accent); }
+.changelog-count { font-size: .8rem; color: var(--muted); margin: .9rem 0 1.75rem; }
+.change-section { margin-bottom: 2.5rem; }
+.change-pending { background: rgba(35,29,22,.65); border: 1px solid rgba(217,166,82,.28); border-radius: 12px; padding: 1.15rem 1.5rem; }
+.change-pending summary { color: #f4d6a4; cursor: pointer; font-size: .98rem; }
+.change-pending summary span { display: inline-block; font-size: .82rem; margin-left: 1rem; color: #c6b99f; }
+.change-pending-note { font-size: .9rem; color: #c6b99f; margin: 1rem 0; }
+.change-entry { display: grid; grid-template-columns: 10rem minmax(0,1fr); gap: 1.6rem; padding: 1.9rem 0; border-top: 1px solid var(--card-border); scroll-margin-top: 1.5rem; }
+.change-date { font-size: .88rem; color: var(--muted); padding-top: .15rem; }
+.change-proposed .change-date { color: #d8bc8d; font-size: .82rem; }
+.change-tags { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin-bottom: .6rem; }
+.change-kind { font-size: .73rem; color: #a8d8e2; margin-right: .35rem; }
+.change-proposed .change-kind { color: #f4d6a4; }
+.change-breaking { color: #ffc28a; }
+.change-platform { font-size: .7rem; padding: .1rem .45rem; border: 1px solid rgba(152,162,179,.23); border-radius: 4px; color: #b9c6d9; }
+.change-body h3 { font-size: 1.19rem; line-height: 1.4; letter-spacing: -.015em; margin: 0 0 .8rem; }
+.change-permalink { color: var(--text); text-decoration: none; }
+.change-body ul { margin: 0; padding-left: 1.1rem; color: #c6d1e2; font-size: .93rem; line-height: 1.75; }
+.change-body li + li { margin-top: .6rem; }
+.change-sources { display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; margin-top: 1rem; }
+.change-sources a { font-size: .78rem; color: #9bb9cf; text-decoration-color: rgba(155,185,207,.4); text-underline-offset: .2em; }
+.change-sources a:hover { color: var(--primary-accent); }
+.change-year-heading { font-size: 1.1rem; color: var(--text); margin: 0 0 .6rem; padding-top: .25rem; }
+.change-year { scroll-margin-top: 1rem; }
+.changelog-history-note { padding: 1.5rem 0; max-width: 46rem; border-top: 1px solid var(--card-border); }
+.changelog-history-note h2 { font-size: 1rem; margin: 0 0 .65rem; }
+.changelog-history-note p { color: var(--muted); font-size: .85rem; margin: .6rem 0; }
+.changelog-history-note a { color: #b2c8e3; }
+.changelog-container footer { font-size: .85rem; text-align: left; margin-top: 1.25rem; }
+.changelog-container a:focus-visible, .changelog-container button:focus-visible, .changelog-container summary:focus-visible { outline: 2px solid var(--primary-accent); outline-offset: 5px; }
+.changelog-container [hidden] { display: none !important; }
+@media (max-width: 640px) {
+  .changelog-container { padding: 1.2rem 1.1rem 2.5rem; }
+  .changelog-nav { padding-bottom: 1.6rem; align-items: flex-start; }
+  .changelog-nav > div { gap: .5rem; flex-direction: column; align-items: flex-end; }
+  .changelog-nav > div a { font-size: .8rem; }
+  .changelog-header { padding-top: .7rem; }
+  .changelog-lede { font-size: 1.02rem; }
+  .changelog-toolbar { flex-wrap: wrap; }
+  .changelog-years { width: 100%; }
+  .changelog-filters { gap: .2rem; }
+  .changelog-filters button { padding: .45rem .65rem; font-size: .8rem; }
+  .change-entry { grid-template-columns: 1fr; gap: .65rem; padding: 1.5rem 0; }
+  .change-date { font-size: .81rem; }
+  .change-body h3 { font-size: 1.1rem; }
+  .change-body ul { font-size: .88rem; }
+  .change-pending { padding: 1rem 1.1rem; }
+  .change-pending summary span { margin: .25rem 0 0 1rem; }
+}
