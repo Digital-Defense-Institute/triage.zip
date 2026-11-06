@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import warnings
 import zipfile
 
@@ -53,6 +53,7 @@ class WindowsCollectionTests(unittest.TestCase):
     def setUp(self):
         # Keep English category fixtures deterministic on Windows too; native
         # lookup behavior is separately tested with controlled system messages.
+        self.native_lookup = validator.windows_system_error_messages
         native_messages = patch.object(validator, 'windows_system_error_messages', return_value={})
         native_messages.start()
         self.addCleanup(native_messages.stop)
@@ -214,7 +215,12 @@ class WindowsCollectionTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(SCRIPT), str(self.path),
                                  '--report', str(report_path)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 1)
-        report = json.loads(report_path.read_text())
+        self.assertFalse(json.loads(report_path.read_text())['valid'])
+        # The subprocess correctly uses native Windows numeric signatures.
+        # Test portable English aggregation under the controlled lookup mock.
+        with self.assertRaises(validator.InvalidCollection) as failure:
+            validator.validate(self.path)
+        report = {'diagnostics': failure.exception.diagnostics}
         errors = report['diagnostics']['upload_errors']
         self.assertEqual(errors['missing_file']['count'], 2)
         self.assertEqual(errors['access_denied']['count'], 1)
@@ -320,6 +326,27 @@ class WindowsCollectionTests(unittest.TestCase):
                 self.assertEqual(summary['logical_size_positive'], 1)
                 self.assertNotIn('SECRET', json.dumps(diagnostic))
                 self.assertNotIn('private', json.dumps(diagnostic))
+
+    def test_native_lookup_uses_format_message_and_caches(self):
+        import ctypes
+        kernel = MagicMock()
+        def format_message(flags, source, code, language, buffer, length, arguments):
+            self.assertEqual(flags, 0x1200)
+            self.assertIsNone(source)
+            self.assertIsNone(arguments)
+            buffer.value = {1: 'Incorrect function.\r\n', 87: 'The parameter is incorrect.\r\n'}[code]
+            return len(buffer.value)
+        kernel.FormatMessageW.side_effect = format_message
+        self.native_lookup.cache_clear()
+        self.addCleanup(self.native_lookup.cache_clear)
+        with patch.object(validator.os, 'name', 'nt'), \
+             patch.object(ctypes, 'WinDLL', return_value=kernel, create=True), \
+             patch.object(validator, 'range', return_value=(1, 87), create=True):
+            first = self.native_lookup()
+            second = self.native_lookup()
+        self.assertEqual(first, {'incorrect function': 1, 'the parameter is incorrect': 87})
+        self.assertIs(first, second)
+        self.assertEqual(kernel.FormatMessageW.call_count, 2)
 
     def test_native_win32_error_signatures_are_numeric_and_redacted(self):
         messages = {
