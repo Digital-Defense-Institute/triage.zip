@@ -1,14 +1,18 @@
 #!/usr/bin/env python3
 """Run the production collector only on a disposable hosted Linux runner."""
 import argparse
+import errno
 import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
 import signal
+import stat
 import subprocess
 import sys
+from urllib.parse import unquote
+import zipfile
 
 
 class RunnerFailure(RuntimeError):
@@ -49,6 +53,60 @@ def run_collector(executable, directory, timeout):
 def sha256(path):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def describe_source(path):
+    """Observe only metadata for one failed source, never read file content."""
+    try:
+        source = os.lstat(path)
+    except OSError as error:
+        return {'source_type': 'missing' if error.errno == errno.ENOENT else 'other',
+                'source_errno': error.errno}
+    source_type = ('symlink' if stat.S_ISLNK(source.st_mode) else
+                   'directory' if stat.S_ISDIR(source.st_mode) else
+                   'regular_file' if stat.S_ISREG(source.st_mode) else 'other')
+    facts = {'source_type': source_type, 'source_size': source.st_size}
+    if source_type != 'symlink':
+        return facts
+    try:
+        target = os.stat(path)
+    except OSError as error:
+        facts.update(target_type='missing' if error.errno == errno.ENOENT else 'other',
+                     target_errno=error.errno)
+    else:
+        target_type = ('directory' if stat.S_ISDIR(target.st_mode) else
+                       'regular_file' if stat.S_ISREG(target.st_mode) else
+                       'dev_null' if stat.S_ISCHR(target.st_mode) and
+                       target.st_rdev == os.makedev(1, 3) else 'other')
+        facts['target_type'] = target_type
+    return facts
+
+
+def live_source_facts(collection):
+    """Bind explicit same-runner observations to this exact produced archive.
+
+    Only failed UAC sources are inspected. The returned paths stay inside the
+    private collection directory and are removed in main's finally block.
+    """
+    sources = {}
+    with zipfile.ZipFile(collection) as archive:
+        for name in archive.namelist():
+            if unquote(name) != 'results/Linux.Triage.UAC/Uploads.json':
+                continue
+            with archive.open(name) as stream:
+                for line in stream:
+                    if not line.strip():
+                        continue
+                    row = json.loads(line)
+                    if not isinstance(row, dict):
+                        continue
+                    upload = row.get('Upload')
+                    source = row.get('SourceFile')
+                    if (isinstance(upload, dict) and upload.get('Error') and
+                            isinstance(source, str) and source.startswith('/') and
+                            '\x00' not in source and len(source) <= 4096 and source not in sources):
+                        sources[source] = describe_source(source)
+    return {'collection_sha256': sha256(collection), 'sources': sources}
 
 
 def main():
@@ -94,10 +152,17 @@ def main():
         collections = list(output.glob('Triage-*.zip'))
         if len(collections) != 1 or not collections[0].is_file():
             raise RunnerFailure('expected_one_collection_zip')
+        report['stage'] = 'source-metadata-check'
+        facts = live_source_facts(collections[0])
+        facts_path = output / '.live-source-facts.json'
+        with facts_path.open('x', encoding='utf-8') as stream:
+            json.dump(facts, stream)
+        facts_path.chmod(0o600)
+        report['stage'] = 'container-validation'
         validator = Path(__file__).with_name('validate_linux_collection.py')
         # Only the validator's fixed diagnostic JSON is retained, never raw logs.
         validation = subprocess.run([sys.executable, '-B', str(validator), str(collections[0]),
-                                     '--report', str(report_path)],
+                                     '--report', str(report_path), '--live-source-facts', str(facts_path)],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                     env=collector_environment())
         if not report_path.is_file():
@@ -113,7 +178,7 @@ def main():
         result = 0
     except RunnerFailure as error:
         report.update(valid=False, failure_reason=str(error))
-    except (OSError, ValueError):
+    except (OSError, ValueError, zipfile.BadZipFile, RuntimeError, EOFError):
         report.update(valid=False, failure_reason='validation_runner_failed')
     finally:
         if created:

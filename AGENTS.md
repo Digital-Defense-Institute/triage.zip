@@ -83,6 +83,16 @@ retry these reads through NTFS. Report such entries as directory skips and never
 count them as file evidence. Keep regular-file, partial, unknown and size errors
 fatal. Test these exceptions through hosted runs as well as synthetic ZIPs.
 
+Linux UAC `Details.Stat` may omit or misattribute the link metadata needed to
+classify failed targets. Do not infer a symlink from an error message alone.
+The guarded runner may inspect failed source paths with `lstat`/`stat`, store
+temporary facts inside its private collection directory, and bind those facts
+to the exact archive SHA256. Only explicitly supplied matching facts can permit
+unchanged symlinks to directories, masked systemd units pointing to `/dev/null`,
+or dangling `/etc` links as separately reported skips. Require matching positive
+link size and exact errors, with no partial output. Static archive validation
+must never inspect source paths on the current host. Never upload facts files.
+
 Check all four output formats and both macOS signatures. A local macOS build
 does not prove Linux CI signing works; require the PR build to pass as well.
 For site edits, check download targets, OS tabs, and narrow-screen layout.

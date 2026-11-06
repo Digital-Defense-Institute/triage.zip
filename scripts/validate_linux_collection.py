@@ -7,6 +7,8 @@ which recursively collects /etc. No evidence content or raw errors enter reports
 """
 from importlib.util import module_from_spec, spec_from_file_location
 import json
+import hashlib
+import argparse
 import errno
 import os
 from functools import lru_cache
@@ -93,7 +95,7 @@ def file_shape(stat):
                            (24, 'socket'), (26, 'device')):
             if mode & (1 << bit):
                 return shape
-        return 'regular_file'
+        return 'regular_or_permissions_only'
     return 'unknown'
 
 
@@ -113,9 +115,40 @@ def error_metadata(summary, row, metadata):
     increment(summary, 'metadata_file_shapes', file_shape(metadata))
     mode = stat.get('Mode') if isinstance(stat, dict) else None
     increment(summary, 'detail_mode_types', json_type(mode))
+    if isinstance(mode, int) and not isinstance(mode, bool):
+        increment(summary, 'detail_mode_values', str(mode))
+    mode_string = stat.get('ModeStr') if isinstance(stat, dict) else None
+    if isinstance(mode_string, str):
+        if re.fullmatch(r'[dalTLDugctpS?\-]{1,10}[rwxstST\-]{9}', mode_string):
+            increment(summary, 'detail_mode_strings', mode_string)
+        else:
+            increment(summary, 'detail_mode_strings', 'unrecognized_format')
+    fixed_fields = ('Mode', 'ModeStr', 'IsLink', 'IsDir', 'Data', 'Link', 'link',
+                    'LinkTarget', 'Symlink', 'Name', 'FullPath')
+    for field in fixed_fields:
+        value_type = json_type(stat[field]) if isinstance(stat, dict) and field in stat else 'absent'
+        increment(summary, 'stat_field_' + field + '_types', value_type)
+    for field in ('IsLink', 'IsDir'):
+        flag = stat.get(field) if isinstance(stat, dict) else None
+        if isinstance(flag, bool):
+            increment(summary, 'stat_' + field + '_values', 'true' if flag else 'false')
+    full_path = stat.get('FullPath') if isinstance(stat, dict) else None
+    if isinstance(source, str) and isinstance(full_path, str):
+        increment(summary, 'detail_source_path_matches', 'true' if source == full_path else 'false')
+    else:
+        increment(summary, 'detail_source_path_matches', 'unavailable')
+    stat_size = stat.get('Size') if isinstance(stat, dict) else None
+    row_size = row.get('FileSize')
+    if isinstance(stat_size, int) and isinstance(row_size, int):
+        increment(summary, 'detail_source_size_matches', 'true' if stat_size == row_size else 'false')
+    else:
+        increment(summary, 'detail_source_size_matches', 'unavailable')
     data = stat.get('Data') if isinstance(stat, dict) else None
     link = data.get('Link') if isinstance(data, dict) else None
     increment(summary, 'link_target_types', json_type(link))
+    for field in ('Link', 'link', 'LinkTarget', 'Symlink'):
+        value_type = json_type(data[field]) if isinstance(data, dict) and field in data else 'absent'
+        increment(summary, 'stat_data_' + field + '_types', value_type)
     if isinstance(link, str):
         shape = ('absolute' if link.startswith('/') else 'relative_parent' if link.startswith('../')
                  else 'relative_current' if link.startswith('./') else 'relative')
@@ -192,7 +225,79 @@ def valid_system_file(archive, stored_name, source):
     return None
 
 
-def validate(path):
+def validate_live_facts(path, facts):
+    if facts is None:
+        return {}
+    require(isinstance(facts, dict) and isinstance(facts.get('sources'), dict),
+            'live source facts are malformed')
+    expected = facts.get('collection_sha256')
+    require(isinstance(expected, str) and re.fullmatch(r'[a-f0-9]{64}', expected),
+            'live source facts digest is malformed')
+    digest = hashlib.sha256()
+    with open(path, 'rb') as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(chunk)
+    require(digest.hexdigest() == expected, 'live source facts do not match collection')
+    return facts['sources']
+
+
+def exact_error_suffix(error, fixed_message):
+    message = error.casefold().strip() if isinstance(error, str) else ''
+    return message == fixed_message or message.endswith(': ' + fixed_message)
+
+
+def live_symlink_skip(row, archive, sources):
+    """Apply only explicit, digest-bound same-runner symlink facts.
+
+    This function never probes source paths. Offline archives alone cannot prove
+    their symlink targets, and cached UAC Details.Stat need not match SourceFile.
+    """
+    source = row.get('SourceFile')
+    if not isinstance(source, str):
+        return None
+    fact = sources.get(source)
+    size = row.get('FileSize')
+    if (not isinstance(fact, dict) or fact.get('source_type') != 'symlink' or
+            fact.get('source_errno') not in (None, 0) or
+            not isinstance(size, int) or isinstance(size, bool) or size <= 0 or
+            not isinstance(fact.get('source_size'), int) or isinstance(fact['source_size'], bool) or
+            fact['source_size'] != size):
+        return None
+    # Do not treat paths with lexical traversal as belonging to a fixed scope.
+    if '..' in source.split('/') or '.' in source.split('/'):
+        return None
+    if fact.get('target_type') in ('directory', 'dev_null') and fact.get('target_errno') not in (None, 0):
+        return None
+    upload = row['Upload']
+    error = upload.get('Error')
+    if exact_error_suffix(error, 'is a directory') and fact.get('target_type') == 'directory':
+        stored_size = upload.get('StoredSize', 0)
+        name = upload.get('StoredName')
+        if (not isinstance(stored_size, int) or isinstance(stored_size, bool) or stored_size != 0 or
+                not isinstance(name, str) or not name.lstrip('/').startswith('uploads/')):
+            return None
+        try:
+            info = archive.getinfo(name.lstrip('/'))
+        except KeyError:
+            return None
+        if info.file_size == 0:
+            return 'directory_symlink'
+    no_stored_output = 'StoredName' not in upload and 'StoredSize' not in upload
+    if (no_stored_output and fact.get('target_type') == 'dev_null' and
+            isinstance(error, str) and error.casefold().startswith('only regular files supported (not ') and
+            error.endswith(')') and any(source.startswith(prefix + '/') for prefix in (
+                '/etc/systemd/system', '/usr/lib/systemd/system', '/lib/systemd/system'))):
+        return 'masked_systemd_unit'
+    if (no_stored_output and source.startswith('/etc/') and fact.get('target_type') == 'missing' and
+            fact.get('target_errno') == errno.ENOENT and
+            exact_error_suffix(error, 'no such file or directory')):
+        return 'dangling_symlink'
+    return None
+
+
+def validate(path, live_source_facts=None):
+    live_sources = validate_live_facts(path, live_source_facts)
+    live_skips = dict.fromkeys(('directory_symlink', 'masked_systemd_unit', 'dangling_symlink'), 0)
     with zipfile.ZipFile(path) as archive:
         context, names, log_rows, warning_rows = _shared.validate_container(
             archive, 'linux', (TRIAGE,), 'Linux')
@@ -236,6 +341,10 @@ def validate(path):
                 errored = bool(upload.get('Error'))
                 if errored and is_empty_directory_read_error(upload, archive):
                     skipped_directory_uploads += 1
+                    continue
+                live_skip = live_symlink_skip(row, archive, live_sources) if errored else None
+                if live_skip:
+                    live_skips[live_skip] += 1
                     continue
                 category = error_category(upload.get('Error')) if errored else None
                 if errored:
@@ -285,7 +394,9 @@ def validate(path):
                     baselines.add(baseline)
         diagnostics = {**counts, 'upload_errors': upload_errors, 'upload_failures': failures,
                        'verified_system_baselines': sorted(baselines),
-                       'skipped_directory_uploads': skipped_directory_uploads}
+                       'skipped_directory_uploads': skipped_directory_uploads,
+                       'live_source_facts_used': live_source_facts is not None,
+                       'live_source_fact_skips': live_skips}
         if upload_errors or any(failures.values()):
             raise InvalidCollection('UAC upload validation failed', diagnostics)
         require(counts['search_glob_rows'] > 0, 'UAC produced no meaningful target rules')
@@ -297,11 +408,36 @@ def validate(path):
                 0 < total <= counts['result_rows'], 'collection row count is invalid')
         return {'valid': True, **counts, 'verified_system_baselines': sorted(baselines),
                 'log_rows': log_rows, 'warning_rows': warning_rows,
-                'skipped_directory_uploads': skipped_directory_uploads}
+                'skipped_directory_uploads': skipped_directory_uploads,
+                       'live_source_facts_used': live_source_facts is not None,
+                       'live_source_fact_skips': live_skips}
 
 
 def main():
-    return _shared.run_cli(validate, __doc__)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('collection', type=Path)
+    parser.add_argument('--report', type=Path)
+    parser.add_argument('--live-source-facts', type=Path)
+    args = parser.parse_args()
+    try:
+        facts = None
+        if args.live_source_facts:
+            try:
+                facts = json.loads(args.live_source_facts.read_text(encoding='utf-8'))
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                raise InvalidCollection('cannot read live source facts') from None
+            require(isinstance(facts, dict), 'live source facts are malformed')
+        report = validate(args.collection, facts)
+    except (InvalidCollection, OSError, zipfile.BadZipFile, RuntimeError, EOFError) as error:
+        diagnostic = str(error) if isinstance(error, InvalidCollection) else 'cannot read valid collection ZIP'
+        report = {'valid': False, 'error': diagnostic}
+        if isinstance(error, InvalidCollection) and error.diagnostics:
+            report['diagnostics'] = error.diagnostics
+    if args.report:
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        args.report.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+    print(json.dumps(report, sort_keys=True))
+    return 0 if report['valid'] else 1
 
 
 if __name__ == '__main__':

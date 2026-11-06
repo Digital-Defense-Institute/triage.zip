@@ -132,6 +132,45 @@ class LinuxRunnerTests(unittest.TestCase):
         self.assertEqual(self.invoke(), 1)
         self.assertEqual(self.report()['failure_reason'], 'collector_bytes_changed')
 
+    def test_live_facts_inspect_only_failed_sources_and_bind_archive(self):
+        from test_linux_collection import UPLOADS, fixture, jsonl
+        target = self.folder / 'directory-target'
+        target.mkdir()
+        link = self.folder / 'directory-link'
+        link.symlink_to(target)
+        files = fixture()
+        files[UPLOADS] += jsonl({'SourceFile': str(link), 'Upload': {'Error': 'is a directory'}},
+                               {'SourceFile': 'relative-secret', 'Upload': {'Error': 'failure'}})
+        archive_path = self.folder / 'sources.zip'
+        with zipfile.ZipFile(archive_path, 'w') as archive:
+            for name, value in files.items():
+                archive.writestr(name, value)
+        facts = runner.live_source_facts(archive_path)
+        self.assertEqual(facts['collection_sha256'], runner.sha256(archive_path))
+        self.assertEqual(set(facts['sources']), {str(link)})
+        self.assertEqual(facts['sources'][str(link)]['source_type'], 'symlink')
+        self.assertEqual(facts['sources'][str(link)]['target_type'], 'directory')
+        self.assertNotIn('link_target', facts['sources'][str(link)])
+
+    def test_live_facts_distinguish_missing_link_target_and_regular_file(self):
+        link = self.folder / 'dangling-link'
+        link.symlink_to(self.folder / 'missing')
+        facts = runner.describe_source(link)
+        self.assertEqual(facts['source_type'], 'symlink')
+        self.assertEqual(facts['target_type'], 'missing')
+        self.assertEqual(facts['target_errno'], 2)
+        regular = self.folder / 'regular'
+        regular.write_text('synthetic')
+        self.assertEqual(runner.describe_source(regular)['source_type'], 'regular_file')
+        self.assertEqual(runner.describe_source(self.folder / 'missing')['source_type'], 'missing')
+
+    def test_malformed_collection_fails_and_cleans_up(self):
+        self.fake('echo not-a-zip > Triage-fixture.zip')
+        self.assertEqual(self.invoke(), 1)
+        self.assertFalse(self.report()['valid'])
+        self.assertEqual(self.report()['failure_reason'], 'validation_runner_failed')
+        self.assertFalse((self.folder / 'collection').exists())
+
     def test_preexisting_output_refused_and_preserved(self):
         self.fake('exit 0')
         output = self.folder / 'collection'

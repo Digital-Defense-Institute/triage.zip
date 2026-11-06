@@ -18,6 +18,8 @@ Collection evidence and raw process logs stay on the disposable runners and are 
 
 Artifact target selection can include directories. Validators report these as directory skips only when the ZIP member is explicitly a directory, its stored content is empty, and the read reports Windows `ERROR_INVALID_FUNCTION` (`Incorrect function`) or Linux `EISDIR` (`is a directory`), respectively. These entries never count as collected file evidence. Regular-file read failures, partial uploads, unknown errors, and mismatched sizes still fail validation.
 
+For failed Linux sources, the guarded runner also records filesystem metadata on the same VM and binds these temporary facts to the collection SHA256. With that explicit corroboration, the Linux validator can report unchanged symlinks to directories, masked systemd units pointing to `/dev/null`, and dangling links under `/etc` as separate non-file skips. Error signatures, target types, source scope and link size must match; copied bytes and regular-file failures remain fatal. Facts containing source paths are deleted with the evidence. Standalone archive validation never inspects the current host and remains strict without an explicit matching facts file.
+
 ## Key Features
 
 - **Offline collection:** Pre-packaged artifacts let responders collect evidence without a Velociraptor server connection.

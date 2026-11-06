@@ -1,5 +1,6 @@
 """Faithful synthetic Linux.Triage.UAC containers; no host workload runs here."""
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -276,10 +277,173 @@ class LinuxCollectionTests(unittest.TestCase):
     def test_file_shape_supports_go_mode_and_modestr(self):
         for stat, expected in (({'Mode': 1 << 31}, 'directory'),
                                ({'Mode': 1 << 25}, 'fifo'), ({'Mode': 1 << 24}, 'socket'),
-                               ({'Mode': 420}, 'regular_file'),
+                               ({'Mode': 420}, 'regular_or_permissions_only'),
                                ({'ModeStr': 'Lrwxrwxrwx'}, 'symlink'),
                                ({'Data': {'Link': '../SECRET'}}, 'symlink')):
             self.assertEqual(validator.file_shape(stat), expected)
+
+    def test_actual_mode_histograms_are_safe_and_fixed_fields_only(self):
+        summary = {}
+        row = {'SourceFile': '/etc/SECRET', 'Details': {'Stat': {
+            'Mode': 41471, 'ModeStr': 'Lrwxrwxrwx', 'IsLink': True,
+            'IsDir': False, 'Data': {'Link': '../SECRET'},
+            'FullPath': '/etc/SECRET', 'SECRET_FIELD': 'SECRET'}}}
+        validator.error_metadata(summary, row, {'SourceFile': '/etc/SECRET'})
+        self.assertEqual(summary['detail_mode_values'], {'41471': 1})
+        self.assertEqual(summary['detail_mode_strings'], {'Lrwxrwxrwx': 1})
+        self.assertEqual(summary['stat_field_FullPath_types'], {'string': 1})
+        self.assertEqual(summary['detail_source_path_matches'], {'true': 1})
+        self.assertEqual(summary['detail_source_size_matches'], {'unavailable': 1})
+        self.assertEqual(summary['stat_field_LinkTarget_types'], {'absent': 1})
+        self.assertEqual(summary['stat_IsLink_values'], {'true': 1})
+        self.assertEqual(summary['stat_IsDir_values'], {'false': 1})
+        self.assertEqual(summary['stat_data_Link_types'], {'string': 1})
+        self.assertNotIn('SECRET', json.dumps(summary))
+        invalid = {}
+        validator.error_metadata(invalid, {'Details': {'Stat': {'ModeStr': '/SECRET'}}}, None)
+        self.assertEqual(invalid['detail_mode_strings'], {'unrecognized_format': 1})
+        self.assertNotIn('SECRET', json.dumps(invalid))
+
+    def live_case(self, kind='directory'):
+        source = '/etc/systemd/system/SECRET.service'
+        upload = {'Error': 'read SECRET: is a directory', 'StoredName': '/uploads/auto/SECRET', 'Size': 18}
+        target = 'directory'
+        if kind == 'masked':
+            upload = {'Error': 'Only regular files supported (not /SECRET)'}
+            target = 'dev_null'
+        elif kind == 'dangling':
+            upload = {'Error': 'open SECRET: no such file or directory'}
+            target = 'missing'
+        self.files['uploads/auto/SECRET'] = b''
+        row = {'SourceFile': source, 'FileSize': 18, 'Upload': upload}
+        self.files[UPLOADS] += jsonl(row)
+        self.write()
+        fact = {'source_type': 'symlink', 'source_size': 18, 'target_type': target}
+        if kind == 'dangling':
+            fact['target_errno'] = 2
+        facts = {'collection_sha256': hashlib.sha256(self.path.read_bytes()).hexdigest(), 'sources': {source: fact}}
+        return row, facts
+
+    def update_live_row(self, row, facts):
+        baseline = json.loads(fixture()[UPLOADS])
+        self.files[UPLOADS] = jsonl(baseline, row)
+        self.write()
+        facts['collection_sha256'] = hashlib.sha256(self.path.read_bytes()).hexdigest()
+
+    def test_live_facts_are_explicit_and_archive_bound(self):
+        row, facts = self.live_case()
+        with self.assertRaises(validator.InvalidCollection):
+            validator.validate(self.path)
+        self.assertTrue(validator.validate(self.path, facts)['valid'])
+        for invalid in ({}, {'sources': {}, 'collection_sha256': '0' * 64},
+                        {'sources': {}, 'collection_sha256': 'SECRET'}):
+            with self.assertRaisesRegex(validator.InvalidCollection, 'live source facts'):
+                validator.validate(self.path, invalid)
+
+    def test_each_narrow_live_symlink_case_is_reported(self):
+        for kind, reason in (('directory', 'directory_symlink'), ('masked', 'masked_systemd_unit'),
+                             ('dangling', 'dangling_symlink')):
+            with self.subTest(kind=kind):
+                self.files = fixture()
+                row, facts = self.live_case(kind)
+                report = validator.validate(self.path, facts)
+                self.assertTrue(report['live_source_facts_used'])
+                self.assertEqual(report['live_source_fact_skips'][reason], 1)
+                self.assertEqual(report['verified_uac_uploads'], 1)
+                self.assertNotIn('SECRET', json.dumps(report))
+
+    def test_live_fact_source_must_be_matching_existing_positive_symlink(self):
+        for change in ({'source_type': 'regular_file'}, {'source_type': 'directory'},
+                       {'source_type': 'missing'}, {'source_size': 19}, {'source_size': False},
+                       {'source_size': 0}, {'source_errno': 2}, {'target_errno': 13}):
+            with self.subTest(change=change):
+                self.files = fixture()
+                row, facts = self.live_case()
+                facts['sources'][row['SourceFile']].update(change)
+                with self.assertRaisesRegex(validator.InvalidCollection, 'upload validation failed'):
+                    validator.validate(self.path, facts)
+
+    def test_live_directory_skip_rejects_wrong_target_error_size_and_partial(self):
+        for change in ({'StoredSize': 1}, {'StoredSize': False}, {'StoredSize': '0'},
+                       {'Error': 'SECRET is a directory'}, {'Error': 'input/output error'}):
+            with self.subTest(change=change):
+                self.files = fixture()
+                row, facts = self.live_case()
+                row['Upload'].update(change)
+                self.update_live_row(row, facts)
+                with self.assertRaises(validator.InvalidCollection):
+                    validator.validate(self.path, facts)
+        self.files = fixture()
+        row, facts = self.live_case()
+        self.files['uploads/auto/SECRET'] = b'partial'
+        self.update_live_row(row, facts)
+        with self.assertRaises(validator.InvalidCollection):
+            validator.validate(self.path, facts)
+
+    def test_masked_unit_scope_and_target_are_strict(self):
+        for source, target in (('/etc/SECRET', 'dev_null'), ('/home/SECRET.service', 'dev_null'),
+                               ('/etc/systemd/system/../SECRET', 'dev_null'),
+                               ('/etc/systemd/system/SECRET.service', 'other')):
+            with self.subTest(source=source, target=target):
+                self.files = fixture()
+                row, facts = self.live_case('masked')
+                fact = next(iter(facts['sources'].values()))
+                fact['target_type'] = target
+                row['SourceFile'] = source
+                facts['sources'] = {source: fact}
+                self.update_live_row(row, facts)
+                with self.assertRaises(validator.InvalidCollection):
+                    validator.validate(self.path, facts)
+
+    def test_no_stored_output_is_required_for_masked_and_dangling(self):
+        for kind in ('masked', 'dangling'):
+            for change in ({'StoredName': ''}, {'StoredSize': 0}, {'StoredSize': 1}):
+                with self.subTest(kind=kind, change=change):
+                    self.files = fixture()
+                    row, facts = self.live_case(kind)
+                    row['Upload'].update(change)
+                    self.update_live_row(row, facts)
+                    with self.assertRaises(validator.InvalidCollection):
+                        validator.validate(self.path, facts)
+
+    def test_dangling_link_requires_etc_scope_errno_and_missing_target(self):
+        for change in ({'target_type': 'regular_file'}, {'target_errno': 13}, {'target_errno': None}):
+            self.files = fixture()
+            row, facts = self.live_case('dangling')
+            facts['sources'][row['SourceFile']].update(change)
+            with self.assertRaises(validator.InvalidCollection):
+                validator.validate(self.path, facts)
+        self.files = fixture()
+        row, facts = self.live_case('dangling')
+        fact = next(iter(facts['sources'].values()))
+        row['SourceFile'] = '/home/SECRET'
+        facts['sources'] = {row['SourceFile']: fact}
+        self.update_live_row(row, facts)
+        with self.assertRaises(validator.InvalidCollection):
+            validator.validate(self.path, facts)
+
+    def test_live_skips_do_not_replace_nonempty_file_evidence(self):
+        row, facts = self.live_case('masked')
+        self.files[UPLOADS] = jsonl(row)
+        self.write()
+        facts['collection_sha256'] = hashlib.sha256(self.path.read_bytes()).hexdigest()
+        with self.assertRaisesRegex(validator.InvalidCollection, 'no verified nonempty'):
+            validator.validate(self.path, facts)
+
+    def test_live_facts_cli_and_malformed_facts_are_redacted(self):
+        row, facts = self.live_case('masked')
+        facts_path = Path(self.temp.name) / 'facts.json'
+        facts_path.write_text(json.dumps(facts))
+        result = subprocess.run([sys.executable, str(SCRIPT), str(self.path),
+                                 '--live-source-facts', str(facts_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue(json.loads(result.stdout)['valid'])
+        self.assertNotIn('SECRET', result.stdout + result.stderr)
+        facts_path.write_text('SECRET malformed')
+        result = subprocess.run([sys.executable, str(SCRIPT), str(self.path),
+                                 '--live-source-facts', str(facts_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn('SECRET', result.stdout + result.stderr)
 
     def test_row_count_must_be_positive_and_plausible(self):
         for value in (0, 100000, '1', True):
