@@ -16,6 +16,8 @@ Before publication, CI runs the newly built Windows executable with its embedded
 
 Collection evidence and raw process logs stay on the disposable runner and are deleted after validation. CI retains only the validation summary for three days. This Windows smoke test covers the runner image; it does not establish compatibility with every Windows version, exercise VSS when no shadow copies exist, validate Linux/macOS execution, or test importing the container into a server.
 
+The artifact's adaptive target selection can include directories. The validator reports these as directory skips only when the ZIP member is explicitly a directory, its stored content is empty, and Windows reports `ERROR_INVALID_FUNCTION` (`Incorrect function`) on the read. These entries never count as collected file evidence. Regular-file read failures, partial uploads, unknown errors, and mismatched sizes still fail validation.
+
 ## Key Features
 
 - **Offline collection:** Pre-packaged artifacts let responders collect evidence without a Velociraptor server connection.

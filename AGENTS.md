@@ -66,6 +66,13 @@ and investigate their cause before introducing any narrowly scoped exception.
 Upstream omits `StoredSize` when zero; accept that omission only for an actually
 empty member, and require separate verified nonempty evidence.
 
+The only accepted upload-error exception is an explicitly marked ZIP directory
+with no stored bytes and Windows `ERROR_INVALID_FUNCTION` (`Incorrect function`).
+Adaptive triage targets can select directories; upstream deliberately does not
+retry these reads through NTFS. Report such entries as directory skips and never
+count them as file evidence. Keep regular-file, partial, unknown and size errors
+fatal. Test this exception against real Windows output as well as synthetic ZIPs.
+
 Check all four output formats and both macOS signatures. A local macOS build
 does not prove Linux CI signing works; require the PR build to pass as well.
 For site edits, check download targets, OS tabs, and narrow-screen layout.

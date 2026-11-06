@@ -375,6 +375,70 @@ class WindowsCollectionTests(unittest.TestCase):
         for extension in ('blf', 'etl', 'regtrans-ms', 'hve', 'log1', 'log2', 'jfm', 'automaticdestinations-ms', 'edb'):
             self.assertEqual(validator.upload_target_type('SECRET.' + extension), 'extension_' + extension)
 
+    def directory_fixture(self, error='read SECRET: Incorrect function.', stored_size=None,
+                          name='uploads/auto/C%3A/Windows/System32/config/RegBack/', data=b''):
+        self.files[name] = data
+        upload = {'Error': error, 'StoredName': '/' + name, 'Size': 4096}
+        if stored_size is not None:
+            upload['StoredSize'] = stored_size
+        self.files[TRIAGE_RESULT] += jsonl({
+            'SourceFile': r'C:\Windows\System32\config\RegBack',
+            'Details': {'Stat': {'IsDir': True}}, 'Upload': upload})
+        self.context(total_collected_rows=4)
+
+    def test_exact_error_one_empty_directory_is_reported_and_skipped(self):
+        for stored_size in (None, 0):
+            with self.subTest(stored_size=stored_size):
+                self.files = fixture()
+                self.directory_fixture(stored_size=stored_size)
+                self.write()
+                report = validator.validate(self.path)
+                self.assertTrue(report['valid'])
+                self.assertEqual(report['verified_triage_uploads'], 1)
+                self.assertEqual(report['skipped_directory_uploads'], 1)
+                diagnostic = report['skipped_directory_diagnostics']['unsupported']
+                self.assertEqual(diagnostic['archive_directories'], 1)
+                self.assertEqual(diagnostic['details_stat_is_dir_true'], 1)
+                self.assertEqual(diagnostic['source_json_types'], {'string': 1})
+                self.assertEqual(diagnostic['stored_target_types'], {'no_extension': 1})
+                self.assertEqual(diagnostic['path_families'], {'windows_registry_regback': 1})
+                self.assertNotIn('SECRET', json.dumps(report))
+
+    def test_directory_skip_accepts_native_error_one_signature(self):
+        self.directory_fixture(error='LOCALIZED SYSTEM MESSAGE')
+        self.write()
+        with patch.object(validator, 'windows_system_error_messages', return_value={'localized system message': 1}):
+            self.assertEqual(validator.validate(self.path)['skipped_directory_uploads'], 1)
+
+    def test_regular_file_error_one_still_fails(self):
+        self.directory_fixture(name='uploads/auto/regular-file')
+        self.invalid('upload reports an error')
+
+    def test_directory_skip_rejects_wrong_error_or_substring(self):
+        for error in ('Access is denied.', 'not supported', 'SECRET Incorrect function. trailing',
+                      'SECRET Incorrect function.', 'invalid function'):
+            with self.subTest(error=error):
+                self.files = fixture()
+                self.directory_fixture(error=error)
+                self.invalid('upload reports an error')
+
+    def test_directory_skip_rejects_nonzero_or_malformed_size(self):
+        for size, data in ((0, b'nonempty'), (4, b''), ('0', b''), (False, b'')):
+            with self.subTest(size=size, data=data):
+                self.files = fixture()
+                self.directory_fixture(stored_size=size, data=data)
+                self.invalid('upload reports an error')
+
+    def test_directory_skip_never_replaces_nonempty_evidence(self):
+        self.files[TRIAGE_RESULT] = ''
+        self.directory_fixture()
+        self.invalid('no verified nonempty')
+
+    def test_nonempty_malformed_directory_is_never_verified_file(self):
+        self.files[TRIAGE_RESULT] = ''
+        self.directory_fixture(error='', stored_size=4, data=b'data')
+        self.invalid('no verified nonempty')
+
     def test_row_count_detects_missing_result_stream(self):
         self.context(total_collected_rows=100)
         self.invalid('row count')
