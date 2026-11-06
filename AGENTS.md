@@ -45,6 +45,13 @@ and site download links consistent with these four outputs.
 
 ## Validation
 
+Before adding a custom artifact, check the supported Velociraptor release's
+built-ins, the current upstream sources, and the Artifact Exchange. Prefer
+configuring existing artifacts. General acquisition features and exclusions
+belong in the upstream Triage Artifact project; keep triage.zip focused on
+artifact selection, collection policy, and packaging. Establish the precise
+remaining gap before proposing a local implementation or upstream contribution.
+
 Run `bash tests/collector_common_test.sh`, shell syntax checks, and
 `actionlint .github/workflows/ci.yml` when available. For integration testing,
 copy the scripts, `lib/`, `config/`, and `data/` to a temporary directory and
@@ -109,6 +116,19 @@ missing executable paths or waive a regular-file read/partial-write failure.
 Check all four output formats and both macOS signatures. A local macOS build
 does not prove Linux CI signing works; require the PR build to pass as well.
 For site edits, check download targets, OS tabs, and narrow-screen layout.
+
+`tests/test_motw_collection.py` runs real NTFS image tests when
+`VELOCIRAPTOR_BINARY` and `VELOCIRAPTOR_NTFS_FIXTURE` are set. The latter must
+be the SHA256-pinned upstream v0.77.3 `test.ntfs.dd`; tests modify only temporary
+copies. CI runs these after building and before any release mutation. Preserve
+this separation from executing a collector against the host.
+
+Parser runtime measurements and exact sanitized reports are under
+`docs/benchmarks/`. Compare first collections with first collections: repeated
+runs on one runner have a large warm-cache effect. Keep process runtime separate
+from validator/cleanup overhead and identify which proposed features were enabled.
+The 2026-11-06 experiment covered five parsers only, excluding MOTW and future
+upstream acquisition changes; it does not establish workstation runtime bounds.
 
 ## Collector changelog
 
