@@ -1,454 +1,77 @@
-name: CI
+name: Parser runtime benchmark
+
+on:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
-  workflow_dispatch:
-  schedule:
-    - cron: '0 18 * * 1'
-
 jobs:
   build:
-    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/ecapuano/parser-runtime-benchmark'
+    runs-on: ubuntu-24.04
     outputs:
-      build: ${{ steps.policy.outputs.build }}
-      publish: ${{ steps.policy.outputs.publish }}
       artifact_id: ${{ steps.package.outputs.artifact-id }}
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
           persist-credentials: false
-
-      - name: Set up JQ
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: Run regression tests
-        run: bash tests/collector_common_test.sh
-
-      - name: Check Velociraptor release version
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+      - name: Test benchmark, collector build helpers, and Windows validator
         run: |
-          set -euo pipefail
-          CURRENT_VERSION="unknown"
-          if [ -f data/velociraptor-version.json ]; then
-            CURRENT_VERSION=$(jq -r '.velociraptor_version // "unknown"' data/velociraptor-version.json)
-          fi
-
-          RESPONSE=$(curl --fail --silent --show-error --retry 3 -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/Velocidex/velociraptor/releases/latest)
-          if [ -z "$RESPONSE" ]; then
-            echo "Error: Unable to fetch Velociraptor release metadata" >&2
-            exit 1
-          fi
-
-          # Select the upstream version with the SAME helper build_collector.sh
-          # uses, so the (numeric, not lexicographic) selection lives in one place.
-          source ./lib/collector_common.sh
-          ASSET_INFO=$(select_velociraptor_asset "$RESPONSE" "linux-amd64")
-          ASSET_NAME=$(echo "$ASSET_INFO" | jq -r '.name // empty')
-          if [ -z "$ASSET_NAME" ]; then
-            echo "Error: Latest release has no supported Linux AMD64 binary" >&2
-            exit 1
-          fi
-          UPSTREAM_VERSION=$(echo "$ASSET_INFO" | jq -er ' .version | select(type == "string" and length > 0)')
-
-          echo "Stored version: $CURRENT_VERSION"
-          echo "Upstream version: $UPSTREAM_VERSION"
-          echo "UPSTREAM_VELO_VERSION=$UPSTREAM_VERSION" >> "$GITHUB_ENV"
-
-          if [ "$CURRENT_VERSION" = "$UPSTREAM_VERSION" ]; then
-            echo "No new release detected."
-            echo "VELO_VERSION_CHANGED=false" >> "$GITHUB_ENV"
-          else
-            echo "New release detected."
-            echo "VELO_VERSION_CHANGED=true" >> "$GITHUB_ENV"
-          fi
-
-      - name: Check Windows.Triage.Targets version
-        run: |
-          set -euo pipefail
-
-          # Fetch current ETag from HTTP header with retry logic
-          MAX_RETRIES=3
-          RETRY_DELAY=5
-          CURRENT_ETAG=""
-
-          for attempt in $(seq 1 $MAX_RETRIES); do
-            echo "Fetching ETag (attempt $attempt of $MAX_RETRIES)..."
-            HEADERS=$(curl -sI --fail --max-time 30 "https://triage.velocidex.com/artifacts/Windows.Triage.Targets.zip" 2>/dev/null || true)
-            CURRENT_ETAG=$(echo "$HEADERS" | grep -i "^etag:" | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//' || true)
-
-            if [ -n "$CURRENT_ETAG" ]; then
-              break
-            fi
-
-            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
-              echo "No ETag received, retrying in ${RETRY_DELAY}s..."
-              sleep $RETRY_DELAY
-            fi
-          done
-
-          # Validate ETag was received
-          if [ -z "$CURRENT_ETAG" ]; then
-            echo "Error: No ETag header received from triage.velocidex.com after $MAX_RETRIES attempts" >&2
-            echo "This may indicate a network issue or server misconfiguration." >&2
-            exit 1
-          fi
-
-          # Load stored ETag
-          STORED_ETAG="unknown"
-          if [ -f data/velociraptor-version.json ]; then
-            STORED_ETAG=$(jq -r '.triage_targets_etag // "unknown"' data/velociraptor-version.json)
-          fi
-
-          echo "Stored triage targets ETag: $STORED_ETAG"
-          echo "Current triage targets ETag: $CURRENT_ETAG"
-
-          # Use heredoc format to safely write ETag to env (prevents injection via malicious ETags)
-          {
-            echo "TRIAGE_ETAG<<EOF"
-            echo "$CURRENT_ETAG"
-            echo "EOF"
-          } >> "$GITHUB_ENV"
-
-          # Change-detection compares the FULL ETag on purpose: it errs toward
-          # rebuilding. A benign CDN mtime wobble may trigger a harmless extra
-          # rebuild, but a real (even same-length) artifact change is never
-          # missed. (The build's download race guard is the opposite — it is
-          # mtime-tolerant to avoid failing a good build on a wobble.)
-          if [ "$STORED_ETAG" = "$CURRENT_ETAG" ]; then
-            echo "Triage targets unchanged."
-            echo "TRIAGE_TARGETS_CHANGED=false" >> "$GITHUB_ENV"
-          else
-            echo "Triage targets changed."
-            echo "TRIAGE_TARGETS_CHANGED=true" >> "$GITHUB_ENV"
-          fi
-
-      - name: Check Linux.Triage.UAC version
-        run: |
-          set -euo pipefail
-
-          # Fetch current ETag from HTTP header with retry logic
-          MAX_RETRIES=3
-          RETRY_DELAY=5
-          CURRENT_ETAG=""
-
-          for attempt in $(seq 1 $MAX_RETRIES); do
-            echo "Fetching Linux artifact ETag (attempt $attempt of $MAX_RETRIES)..."
-            HEADERS=$(curl -sI --fail --max-time 30 "https://triage.velocidex.com/artifacts/Linux.Triage.UAC.zip" 2>/dev/null || true)
-            CURRENT_ETAG=$(echo "$HEADERS" | grep -i "^etag:" | tr -d '\r' | sed 's/^[Ee][Tt][Aa][Gg]: *//' || true)
-
-            if [ -n "$CURRENT_ETAG" ]; then
-              break
-            fi
-
-            if [ "$attempt" -lt "$MAX_RETRIES" ]; then
-              echo "No ETag received, retrying in ${RETRY_DELAY}s..."
-              sleep $RETRY_DELAY
-            fi
-          done
-
-          # Validate ETag was received
-          if [ -z "$CURRENT_ETAG" ]; then
-            echo "Error: No ETag header received from triage.velocidex.com for Linux artifact after $MAX_RETRIES attempts" >&2
-            echo "This may indicate a network issue or server misconfiguration." >&2
-            exit 1
-          fi
-
-          # Load stored ETag
-          STORED_ETAG="unknown"
-          if [ -f data/velociraptor-version.json ]; then
-            STORED_ETAG=$(jq -r '.linux_triage_targets_etag // "unknown"' data/velociraptor-version.json)
-          fi
-
-          echo "Stored Linux triage targets ETag: $STORED_ETAG"
-          echo "Current Linux triage targets ETag: $CURRENT_ETAG"
-
-          # Use heredoc format to safely write ETag to env (prevents injection via malicious ETags)
-          {
-            echo "LINUX_TRIAGE_ETAG<<EOF"
-            echo "$CURRENT_ETAG"
-            echo "EOF"
-          } >> "$GITHUB_ENV"
-
-          # Full-ETag comparison on purpose — errs toward rebuilding so a real
-          # change is never missed (see the Windows step).
-          if [ "$STORED_ETAG" = "$CURRENT_ETAG" ]; then
-            echo "Linux triage targets unchanged."
-            echo "LINUX_TRIAGE_TARGETS_CHANGED=false" >> "$GITHUB_ENV"
-          else
-            echo "Linux triage targets changed."
-            echo "LINUX_TRIAGE_TARGETS_CHANGED=true" >> "$GITHUB_ENV"
-          fi
-
-      - name: Decide build and publication
-        id: policy
-        env:
-          PUSH_BEFORE: ${{ github.event.before }}
-        run: bash scripts/ci_policy.sh >> "$GITHUB_OUTPUT"
-
-      - name: Run build script
-        if: steps.policy.outputs.build == 'true'
-        env:
-          TRIAGE_ETAG: ${{ env.TRIAGE_ETAG }}
-          TRIAGE_TARGETS_CHANGED: ${{ env.TRIAGE_TARGETS_CHANGED }}
-          LINUX_TRIAGE_ETAG: ${{ env.LINUX_TRIAGE_ETAG }}
-          LINUX_TRIAGE_TARGETS_CHANGED: ${{ env.LINUX_TRIAGE_TARGETS_CHANGED }}
+          python3 -B -m unittest discover -s tests -p test_parser_benchmark.py -v
+          python3 -B -m unittest discover -s tests -p test_collector_common.py -v
+          python3 -B -m unittest discover -s tests -p 'test_windows*.py' -v
+      - name: Build original production collectors
         run: bash build_collector.sh
-
-      # Stage only public release payloads; datastore also contains private keys.
-      - name: Stage release payloads
-        if: steps.policy.outputs.build == 'true'
+      - name: Build parser-only variant from the same inputs
         run: |
           set -euo pipefail
-          mkdir -p release-inputs/data
-          cp datastore/Velociraptor_Triage_Collector.exe \
-            datastore/Velociraptor_Triage_Collector_Linux \
-            datastore/Velociraptor_Triage_Collector_macOS \
-            datastore/Velociraptor_Triage_Collector_macOS_ARM release-inputs/
-          cp data/velociraptor-version.json release-inputs/data/
-          cd release-inputs
-          sha256sum Velociraptor_Triage_Collector.exe \
-            Velociraptor_Triage_Collector_Linux \
-            Velociraptor_Triage_Collector_macOS \
-            Velociraptor_Triage_Collector_macOS_ARM \
-            data/velociraptor-version.json > SHA256SUMS
-
-      - name: Upload release payloads
-        if: steps.policy.outputs.build == 'true'
+          python3 scripts/prepare_parser_benchmark.py
+          ./velociraptor collector --datastore ./datastore/ ./config/spec_benchmark_parsers.yaml
+          source lib/collector_common.sh
+          verify_collector_not_stub ./datastore/Velociraptor_Triage_Collector_Parsers.exe
+          mkdir benchmark-inputs
+          cp datastore/Velociraptor_Triage_Collector.exe benchmark-inputs/baseline.exe
+          cp datastore/Velociraptor_Triage_Collector_Parsers.exe benchmark-inputs/parsers.exe
+          cp data/velociraptor-version.json benchmark-inputs/metadata.json
+          cd benchmark-inputs
+          sha256sum baseline.exe parsers.exe > SHA256SUMS
+      - name: Upload only benchmark executables and public metadata
         id: package
         uses: actions/upload-artifact@v4
         with:
-          name: release-inputs
-          path: release-inputs/
-          if-no-files-found: error
-          retention-days: 3
+          name: parser-benchmark-inputs
+          path: benchmark-inputs/
+          retention-days: 1
           compression-level: 0
-
-  windows_validate:
+          if-no-files-found: error
+  benchmark:
     needs: build
-    if: needs.build.outputs.build == 'true'
     runs-on: windows-2022
-    timeout-minutes: 55
-    outputs:
-      collector_sha256: ${{ steps.validate.outputs.collector_sha256 }}
+    timeout-minutes: 70
     steps:
-      - name: Checkout validation scripts
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Test Windows validation helpers
+      - name: Test guarded Windows runner helpers
         run: python -B -m unittest discover -s tests -p 'test_windows*.py' -v
-
-      - name: Download exact build payloads
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           artifact-ids: ${{ needs.build.outputs.artifact_id }}
-          path: release-inputs
+          path: benchmark-inputs
           merge-multiple: true
-
-      - name: Run and validate Windows collection
-        id: validate
+      - name: Run three paired production collections
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          foreach ($line in Get-Content release-inputs/SHA256SUMS) {
-            if ($line -notmatch '^([a-f0-9]{64})  (.+)$') {
-              throw 'Invalid build checksum manifest'
-            }
-            $expected = $Matches[1]
-            $path = Join-Path 'release-inputs' $Matches[2]
-            if ((Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant() -ne $expected) {
-              throw 'Build payload checksum mismatch'
-            }
-          }
-          $collector = (Resolve-Path release-inputs/Velociraptor_Triage_Collector.exe).Path
-          $before = (Get-FileHash -Algorithm SHA256 -LiteralPath $collector).Hash.ToLowerInvariant()
-          ./scripts/run_windows_collection.ps1 -Collector $collector `
-            -OutputDirectory "$env:RUNNER_TEMP/windows-collection" `
-            -ReportDirectory "$env:GITHUB_WORKSPACE/windows-validation" -TimeoutSeconds 2700
-          if ($LASTEXITCODE -ne 0) { throw 'Windows collection validation failed' }
-          $report = Get-Content windows-validation/validation-report.json -Raw | ConvertFrom-Json
-          if ($report.valid -ne $true -or $report.collector_sha256 -ne $before) {
-            throw 'Windows validation report does not match the tested collector'
-          }
-          $after = (Get-FileHash -Algorithm SHA256 -LiteralPath $collector).Hash.ToLowerInvariant()
-          if ($before -ne $after) { throw 'Collector changed during validation' }
-          "collector_sha256=$after" >> $env:GITHUB_OUTPUT
-
-      # Collection ZIPs and raw logs may include runner evidence. Publish only
-      # the validator's redacted counts/status report, including on failure.
-      - name: Upload Windows validation report
+        run: ./scripts/run_parser_benchmark.ps1
+      - name: Retain numeric reports only
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: windows-validation
-          path: windows-validation/validation-report.json
+          name: parser-runtime-report
+          path: parser-benchmark-report/
           if-no-files-found: warn
           retention-days: 3
-
-  linux_validate:
-    needs: build
-    if: needs.build.outputs.build == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 55
-    outputs:
-      collector_sha256: ${{ steps.validate.outputs.collector_sha256 }}
-    steps:
-      - name: Checkout validation scripts
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Test Linux validation helpers
-        run: python -B -m unittest discover -s tests -p 'test_linux*.py' -v
-
-      - name: Download exact build payloads
-        uses: actions/download-artifact@v4
-        with:
-          artifact-ids: ${{ needs.build.outputs.artifact_id }}
-          path: release-inputs
-          merge-multiple: true
-
-      - name: Run and validate Linux collection
-        id: validate
-        run: |
-          set -euo pipefail
-          (cd release-inputs && sha256sum --check --strict SHA256SUMS)
-          COLLECTOR=$(realpath release-inputs/Velociraptor_Triage_Collector_Linux)
-          BEFORE=$(sha256sum "$COLLECTOR")
-          BEFORE=${BEFORE%% *}
-          chmod +x "$COLLECTOR"
-          # Keep setup-python's interpreter when sudo applies its secure PATH.
-          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT "$(command -v python)" \
-            scripts/run_linux_collection.py --collector "$COLLECTOR" \
-            --output-directory "$RUNNER_TEMP/linux-collection" \
-            --report-directory "$GITHUB_WORKSPACE/linux-validation" --timeout-seconds 2700
-          python - "$BEFORE" <<'PYTHON'
-          import json
-          import sys
-          from pathlib import Path
-          report = json.loads(Path('linux-validation/validation-report.json').read_text())
-          if report.get('valid') is not True or report.get('collector_sha256') != sys.argv[1]:
-              raise SystemExit('Linux validation report does not match the tested collector')
-          PYTHON
-          AFTER=$(sha256sum "$COLLECTOR")
-          AFTER=${AFTER%% *}
-          test "$BEFORE" = "$AFTER"
-          echo "collector_sha256=$AFTER" >> "$GITHUB_OUTPUT"
-
-      # Never upload the collection ZIP, UAC output, or evidence-bearing logs.
-      - name: Upload Linux validation report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-validation
-          path: linux-validation/validation-report.json
-          if-no-files-found: warn
-          retention-days: 3
-
-  publish:
-    needs: [build, windows_validate, linux_validate]
-    if: needs.build.outputs.publish == 'true' && needs.windows_validate.result == 'success' && needs.linux_validate.result == 'success'
-    # Serialize latest-release replacement; never cancel an active publication.
-    concurrency:
-      group: triage-latest-publication
-      cancel-in-progress: false
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout tested source
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 0
-
-      - name: Download exact build payloads
-        uses: actions/download-artifact@v4
-        with:
-          artifact-ids: ${{ needs.build.outputs.artifact_id }}
-          path: release-inputs
-          merge-multiple: true
-
-      - name: Verify tested payloads and publication source
-        env:
-          VALIDATED_WINDOWS_SHA256: ${{ needs.windows_validate.outputs.collector_sha256 }}
-          VALIDATED_LINUX_SHA256: ${{ needs.linux_validate.outputs.collector_sha256 }}
-        run: |
-          set -euo pipefail
-          (cd release-inputs && sha256sum --check --strict SHA256SUMS)
-          WINDOWS_SHA256=$(sha256sum release-inputs/Velociraptor_Triage_Collector.exe)
-          test "${WINDOWS_SHA256%% *}" = "$VALIDATED_WINDOWS_SHA256"
-          LINUX_SHA256=$(sha256sum release-inputs/Velociraptor_Triage_Collector_Linux)
-          test "${LINUX_SHA256%% *}" = "$VALIDATED_LINUX_SHA256"
-          # Do not publish stale source or commit metadata over a newer main.
-          git fetch origin main
-          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
-          git switch -C main "$GITHUB_SHA"
-          cp release-inputs/data/velociraptor-version.json data/velociraptor-version.json
-
-      - name: Delete existing latest release
-        run: |
-          gh release delete latest --yes || true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Delete old latest tag
-        run: |
-          git tag -d latest || true
-          git push --delete origin latest || true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create Latest Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          VERSION=$(jq -er '.velociraptor_version' data/velociraptor-version.json)
-          gh release create latest \
-            ./release-inputs/Velociraptor_Triage_Collector.exe \
-            ./release-inputs/Velociraptor_Triage_Collector_Linux \
-            ./release-inputs/Velociraptor_Triage_Collector_macOS \
-            ./release-inputs/Velociraptor_Triage_Collector_macOS_ARM \
-            --target "$GITHUB_SHA" \
-            --title "Latest Release" \
-            --notes "Built with Velociraptor $VERSION; Windows and Linux collection validation passed." \
-            --latest
-
-      - name: Commit version metadata
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if git diff --quiet data/velociraptor-version.json; then
-            echo "No version metadata changes to commit."
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add data/velociraptor-version.json
-            git commit -m "chore: update version metadata [skip ci]"
-            git push origin HEAD:refs/heads/main
-          fi

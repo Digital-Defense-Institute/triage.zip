@@ -3,6 +3,8 @@ param(
     [string]$Collector,
     [string]$OutputDirectory,
     [string]$ReportDirectory,
+    [string]$MetricsFile,
+    [ValidateSet('baseline', 'parsers')][string]$BenchmarkVariant = 'baseline',
     [ValidateRange(1, 7200)][int]$TimeoutSeconds = 2700
 )
 
@@ -57,6 +59,7 @@ New-Item -ItemType Directory -Path $ReportDirectory -Force | Out-Null
 $reportPath = Join-Path $ReportDirectory 'validation-report.json'
 $report = @{ valid = $false; stage = 'starting' }
 $exitCode = 1
+$executionSeconds = $null
 try {
     New-Item -ItemType Directory -Path $OutputDirectory | Out-Null
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Collector).Hash.ToLowerInvariant()
@@ -65,15 +68,23 @@ try {
     Copy-Item -LiteralPath $Collector -Destination $localCollector
     $report.stage = 'execution'
     # No arguments: use the exact embedded production collection configuration.
+    $executionTimer = [Diagnostics.Stopwatch]::StartNew()
     Invoke-CollectorProcess -Executable $localCollector -WorkingDirectory $OutputDirectory `
         -Timeout $TimeoutSeconds -Stdout (Join-Path $OutputDirectory 'process.stdout.log') `
         -Stderr (Join-Path $OutputDirectory 'process.stderr.log')
+    $executionTimer.Stop()
+    $executionSeconds = $executionTimer.Elapsed.TotalSeconds
     if ((Get-FileHash -Algorithm SHA256 -LiteralPath $localCollector).Hash.ToLowerInvariant() -ne $hash) {
         throw 'Collector bytes changed during execution.'
     }
     $report.stage = 'container-validation'
     $collections = @(Get-ChildItem -LiteralPath $OutputDirectory -File -Filter 'Triage-*.zip')
     if ($collections.Count -ne 1) { throw 'Expected exactly one new Triage collection ZIP.' }
+    if ($MetricsFile) {
+        & python (Join-Path $PSScriptRoot 'benchmark_collection_metrics.py') `
+            $collections[0].FullName --variant $BenchmarkVariant --output $MetricsFile
+        if ($LASTEXITCODE -ne 0) { throw 'Benchmark metrics validation failed.' }
+    }
     & python (Join-Path $PSScriptRoot 'validate_windows_collection.py') `
         $collections[0].FullName --report $reportPath
     $validatorExit = $LASTEXITCODE
@@ -90,6 +101,7 @@ try {
     Write-Warning "Windows validation failed at stage: $($report.stage)"
     $report.valid = $false
 } finally {
+    $report.execution_seconds = $executionSeconds
     $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $reportPath -Encoding utf8
     if (Test-Path -LiteralPath $OutputDirectory) {
         Remove-Item -LiteralPath $OutputDirectory -Recurse -Force
