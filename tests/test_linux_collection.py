@@ -475,6 +475,107 @@ class LinuxCollectionTests(unittest.TestCase):
             'source_type': 'SECRET', 'target_type': 'SECRET', 'source_errno': 'SECRET'}})
         self.assertNotIn('SECRET', json.dumps(unsafe))
 
+    def test_explicit_special_file_symlink_types_are_reported(self):
+        for target in ('socket', 'fifo', 'character_device', 'block_device'):
+            self.files = fixture()
+            row, facts = self.live_case('masked')
+            facts['sources'][row['SourceFile']]['target_type'] = target
+            report = validator.validate(self.path, facts)
+            self.assertEqual(report['live_source_fact_skips']['special_file_symlink'], 1)
+            self.assertEqual(report['special_file_symlink_targets'][target], 1)
+            self.assertEqual(report['verified_uac_uploads'], 1)
+
+    def test_special_file_symlink_rejects_other_regular_partial_and_bad_scope(self):
+        for change in ({'target_type': 'other'}, {'target_type': 'regular_file'},
+                       {'target_type': 'directory'}, {'target_errno': 13},
+                       {'source_type': 'regular_file'}, {'source_size': 17}):
+            self.files = fixture()
+            row, facts = self.live_case('masked')
+            facts['sources'][row['SourceFile']].update(target_type='socket')
+            facts['sources'][row['SourceFile']].update(change)
+            with self.assertRaises(validator.InvalidCollection):
+                validator.validate(self.path, facts)
+        for source in ('/tmp/SECRET', '/home/SECRET', '/etc/../SECRET'):
+            self.files = fixture()
+            row, facts = self.live_case('masked')
+            fact = next(iter(facts['sources'].values()))
+            fact['target_type'] = 'socket'
+            row['SourceFile'] = source
+            facts['sources'] = {source: fact}
+            self.update_live_row(row, facts)
+            with self.assertRaises(validator.InvalidCollection):
+                validator.validate(self.path, facts)
+        for output in ({'StoredName': ''}, {'StoredSize': 0}, {'StoredSize': 9}):
+            self.files = fixture()
+            row, facts = self.live_case('masked')
+            facts['sources'][row['SourceFile']]['target_type'] = 'socket'
+            row['Upload'].update(output)
+            self.update_live_row(row, facts)
+            with self.assertRaises(validator.InvalidCollection):
+                validator.validate(self.path, facts)
+
+    def temporary_case(self, source='/tmp/SECRET'):
+        row, facts = self.live_case('dangling')
+        row['SourceFile'] = source
+        facts['sources'] = {source: {'source_type': 'missing', 'source_errno': 2}}
+        self.files[METADATA] += jsonl({'SourceFile': source, 'Type': 'Glob', 'Size': 18})
+        self.update_live_row(row, facts)
+        return row, facts
+
+    def test_confirmed_vanished_temporary_targets_are_explicit_skips(self):
+        for source in ('/tmp/SECRET', '/var/tmp/SECRET'):
+            self.files = fixture()
+            row, facts = self.temporary_case(source)
+            report = validator.validate(self.path, facts)
+            self.assertEqual(report['live_source_fact_skips']['vanished_temporary_target'], 1)
+            self.assertEqual(report['verified_uac_uploads'], 1)
+            self.assertNotIn('SECRET', json.dumps(report))
+            with self.assertRaises(validator.InvalidCollection):
+                validator.validate(self.path)
+
+    def test_vanished_temporary_scope_is_normalized_and_strict(self):
+        for source in ('/etc/SECRET', '/tmpx/SECRET', '/var/tmpx/SECRET', '/tmp/../etc/SECRET',
+                       '/tmp/./SECRET', '/tmp//SECRET', '/var//tmp/SECRET', '/tmp'):
+            self.files = fixture()
+            row, facts = self.temporary_case(source)
+            with self.assertRaises(validator.InvalidCollection):
+                validator.validate(self.path, facts)
+
+    def test_vanished_temporary_requires_original_matching_glob_metadata(self):
+        for metadata in (None, {'Type': 'Glob', 'Size': 17}, {'Size': 18},
+                         {'Type': 'Other', 'Size': 18}, {'Type': 'Glob', 'Size': True},
+                         {'Type': 'Glob', 'Size': 0}, {'Type': 'Glob', 'Size': '18'}):
+            with self.subTest(metadata=metadata):
+                self.files = fixture()
+                row, facts = self.temporary_case()
+                self.files[METADATA] = fixture()[METADATA]
+                if metadata is not None:
+                    self.files[METADATA] += jsonl({'SourceFile': row['SourceFile'], **metadata})
+                self.update_live_row(row, facts)
+                with self.assertRaises(validator.InvalidCollection):
+                    validator.validate(self.path, facts)
+
+    def test_vanished_temporary_requires_kernel_missing_without_contradictions(self):
+        for change in ({'source_type': 'regular_file'}, {'source_type': 'symlink'},
+                       {'source_errno': 13}, {'source_errno': None}, {'source_errno': 2.0}, {'source_size': 18},
+                       {'target_type': 'regular_file'}, {'target_errno': 13}):
+            self.files = fixture()
+            row, facts = self.temporary_case()
+            facts['sources'][row['SourceFile']].update(change)
+            with self.assertRaises(validator.InvalidCollection):
+                validator.validate(self.path, facts)
+
+    def test_vanished_temporary_rejects_other_errors_and_any_output(self):
+        for change in ({'Error': 'permission denied'}, {'Error': 'SECRET no such file or directory'},
+                       {'Error': 'input/output error'}, {'StoredName': ''},
+                       {'StoredName': '/uploads/auto/SECRET'}, {'StoredSize': 0}, {'StoredSize': 10}):
+            self.files = fixture()
+            row, facts = self.temporary_case()
+            row['Upload'].update(change)
+            self.update_live_row(row, facts)
+            with self.assertRaises(validator.InvalidCollection):
+                validator.validate(self.path, facts)
+
     def test_row_count_must_be_positive_and_plausible(self):
         for value in (0, 100000, '1', True):
             with self.subTest(value=value):

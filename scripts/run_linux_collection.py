@@ -77,7 +77,11 @@ def describe_source(path):
         target_type = ('directory' if stat.S_ISDIR(target.st_mode) else
                        'regular_file' if stat.S_ISREG(target.st_mode) else
                        'dev_null' if stat.S_ISCHR(target.st_mode) and
-                       target.st_rdev == os.makedev(1, 3) else 'other')
+                       target.st_rdev == os.makedev(1, 3) else
+                       'character_device' if stat.S_ISCHR(target.st_mode) else
+                       'block_device' if stat.S_ISBLK(target.st_mode) else
+                       'socket' if stat.S_ISSOCK(target.st_mode) else
+                       'fifo' if stat.S_ISFIFO(target.st_mode) else 'other')
         facts['target_type'] = target_type
     return facts
 

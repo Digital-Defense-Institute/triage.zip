@@ -11,6 +11,7 @@ import hashlib
 import argparse
 import errno
 import os
+import posixpath
 from functools import lru_cache
 from pathlib import Path
 import re
@@ -246,6 +247,10 @@ def exact_error_suffix(error, fixed_message):
     return message == fixed_message or message.endswith(': ' + fixed_message)
 
 
+def valid_errno(value, code, optional=False):
+    return (optional and value is None) or (type(value) is int and value == code)
+
+
 def live_symlink_skip(row, archive, sources):
     """Apply only explicit, digest-bound same-runner symlink facts.
 
@@ -258,7 +263,7 @@ def live_symlink_skip(row, archive, sources):
     fact = sources.get(source)
     size = row.get('FileSize')
     if (not isinstance(fact, dict) or fact.get('source_type') != 'symlink' or
-            fact.get('source_errno') not in (None, 0) or
+            not valid_errno(fact.get('source_errno'), 0, optional=True) or
             not isinstance(size, int) or isinstance(size, bool) or size <= 0 or
             not isinstance(fact.get('source_size'), int) or isinstance(fact['source_size'], bool) or
             fact['source_size'] != size):
@@ -266,7 +271,7 @@ def live_symlink_skip(row, archive, sources):
     # Do not treat paths with lexical traversal as belonging to a fixed scope.
     if '..' in source.split('/') or '.' in source.split('/'):
         return None
-    if fact.get('target_type') in ('directory', 'dev_null') and fact.get('target_errno') not in (None, 0):
+    if fact.get('target_type') in ('directory', 'dev_null', 'socket', 'fifo', 'character_device', 'block_device') and not valid_errno(fact.get('target_errno'), 0, optional=True):
         return None
     upload = row['Upload']
     error = upload.get('Error')
@@ -288,11 +293,43 @@ def live_symlink_skip(row, archive, sources):
             error.endswith(')') and any(source.startswith(prefix + '/') for prefix in (
                 '/etc', '/usr/lib/systemd/system', '/lib/systemd/system'))):
         return 'dev_null_symlink'
+    if (no_stored_output and fact.get('target_type') in (
+            'socket', 'fifo', 'character_device', 'block_device') and
+            isinstance(error, str) and error.casefold().startswith('only regular files supported (not ') and
+            error.endswith(')') and any(source.startswith(prefix + '/') for prefix in (
+                '/etc', '/usr/lib/systemd/system', '/lib/systemd/system'))):
+        return 'special_file_symlink'
     if (no_stored_output and source.startswith('/etc/') and fact.get('target_type') == 'missing' and
-            fact.get('target_errno') == errno.ENOENT and
+            valid_errno(fact.get('target_errno'), errno.ENOENT) and
             exact_error_suffix(error, 'no such file or directory')):
         return 'dangling_symlink'
     return None
+
+
+def vanished_temporary_skip(row, sources, metadata):
+    source = row.get('SourceFile')
+    if (not isinstance(source, str) or posixpath.normpath(source) != source or
+            not (source.startswith('/tmp/') or source.startswith('/var/tmp/'))):
+        return False
+    fact = sources.get(source)
+    if (not isinstance(fact, dict) or fact.get('source_type') != 'missing' or
+            not valid_errno(fact.get('source_errno'), errno.ENOENT) or
+            fact.get('source_size') is not None or
+            fact.get('target_type') not in (None, 'missing') or
+            not valid_errno(fact.get('target_errno'), errno.ENOENT, optional=True)):
+        return False
+    upload = row['Upload']
+    if ('StoredName' in upload or 'StoredSize' in upload or
+            not exact_error_suffix(upload.get('Error'), 'no such file or directory')):
+        return False
+    size = row.get('FileSize')
+    if (not isinstance(size, int) or isinstance(size, bool) or size <= 0 or
+            not isinstance(metadata, dict) or metadata.get('SourceFile') != source or
+            metadata.get('Type') != 'Glob' or
+            not isinstance(metadata.get('Size'), int) or isinstance(metadata['Size'], bool) or
+            metadata['Size'] != size):
+        return False
+    return True
 
 
 def live_error_metadata(summary, row, sources):
@@ -306,7 +343,8 @@ def live_error_metadata(summary, row, sources):
     increment(summary, 'live_source_types', source_type if source_type in (
         'symlink', 'regular_file', 'directory', 'other', 'missing') else 'unrecognized')
     increment(summary, 'live_target_types', target_type if target_type in (
-        'directory', 'regular_file', 'dev_null', 'missing', 'other') else 'unrecognized')
+        'directory', 'regular_file', 'dev_null', 'missing', 'other',
+        'socket', 'fifo', 'character_device', 'block_device') else 'unrecognized')
     size = fact.get('source_size')
     row_size = row.get('FileSize')
     if (isinstance(size, int) and not isinstance(size, bool) and
@@ -323,7 +361,9 @@ def live_error_metadata(summary, row, sources):
 
 def validate(path, live_source_facts=None):
     live_sources = validate_live_facts(path, live_source_facts)
-    live_skips = dict.fromkeys(('directory_symlink', 'dev_null_symlink', 'dangling_symlink'), 0)
+    live_skips = dict.fromkeys(('directory_symlink', 'dev_null_symlink', 'dangling_symlink',
+                               'special_file_symlink', 'vanished_temporary_target'), 0)
+    special_skip_targets = dict.fromkeys(('socket', 'fifo', 'character_device', 'block_device'), 0)
     with zipfile.ZipFile(path) as archive:
         context, names, log_rows, warning_rows = _shared.validate_container(
             archive, 'linux', (TRIAGE,), 'Linux')
@@ -368,9 +408,16 @@ def validate(path, live_source_facts=None):
                 if errored and is_empty_directory_read_error(upload, archive):
                     skipped_directory_uploads += 1
                     continue
+                source_file = row.get('SourceFile')
+                metadata = metadata_by_source.get(source_file) if isinstance(source_file, str) else None
                 live_skip = live_symlink_skip(row, archive, live_sources) if errored else None
                 if live_skip:
                     live_skips[live_skip] += 1
+                    if live_skip == 'special_file_symlink':
+                        special_skip_targets[live_sources[source_file]['target_type']] += 1
+                    continue
+                if errored and vanished_temporary_skip(row, live_sources, metadata):
+                    live_skips['vanished_temporary_target'] += 1
                     continue
                 category = error_category(upload.get('Error')) if errored else None
                 if errored:
@@ -423,7 +470,8 @@ def validate(path, live_source_facts=None):
                        'verified_system_baselines': sorted(baselines),
                        'skipped_directory_uploads': skipped_directory_uploads,
                        'live_source_facts_used': live_source_facts is not None,
-                       'live_source_fact_skips': live_skips}
+                       'live_source_fact_skips': live_skips,
+                       'special_file_symlink_targets': special_skip_targets}
         if upload_errors or any(failures.values()):
             raise InvalidCollection('UAC upload validation failed', diagnostics)
         require(counts['search_glob_rows'] > 0, 'UAC produced no meaningful target rules')
@@ -437,7 +485,8 @@ def validate(path, live_source_facts=None):
                 'log_rows': log_rows, 'warning_rows': warning_rows,
                 'skipped_directory_uploads': skipped_directory_uploads,
                        'live_source_facts_used': live_source_facts is not None,
-                       'live_source_fact_skips': live_skips}
+                       'live_source_fact_skips': live_skips,
+                       'special_file_symlink_targets': special_skip_targets}
 
 
 def main():

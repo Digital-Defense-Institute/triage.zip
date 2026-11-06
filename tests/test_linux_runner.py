@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import socket
 import subprocess
 import sys
 import tempfile
@@ -163,6 +164,19 @@ class LinuxRunnerTests(unittest.TestCase):
         regular.write_text('synthetic')
         self.assertEqual(runner.describe_source(regular)['source_type'], 'regular_file')
         self.assertEqual(runner.describe_source(self.folder / 'missing')['source_type'], 'missing')
+
+    def test_live_facts_classify_fifo_and_socket_without_opening_streams(self):
+        fifo = self.folder / 'pipe'
+        os.mkfifo(fifo)
+        link = self.folder / 'pipe-link'
+        link.symlink_to(fifo)
+        self.assertEqual(runner.describe_source(link)['target_type'], 'fifo')
+        endpoint = self.folder / 'socket'
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+            server.bind(str(endpoint))
+            socket_link = self.folder / 'socket-link'
+            socket_link.symlink_to(endpoint)
+            self.assertEqual(runner.describe_source(socket_link)['target_type'], 'socket')
 
     def test_malformed_collection_fails_and_cleans_up(self):
         self.fake('echo not-a-zip > Triage-fixture.zip')

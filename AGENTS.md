@@ -89,8 +89,12 @@ The guarded runner may inspect failed source paths with `lstat`/`stat`, store
 temporary facts inside its private collection directory, and bind those facts
 to the exact archive SHA256. Only explicitly supplied matching facts can permit
 symlinks to directories, `/etc` configuration or systemd unit links pointing to
-`/dev/null`, or dangling `/etc` links as separately reported skips. Require matching positive
-link size and exact errors, with no partial output. Static archive validation
+`/dev/null` or explicit kernel device/FIFO/socket types, or dangling `/etc` links
+as separately reported skips. Require matching positive link size and exact
+errors, with no partial output. A vanished `/tmp` or `/var/tmp` target is an
+explicitly counted exception only with matching original positive-size Glob
+metadata, fresh same-runner ENOENT and no stored output. Other missing files,
+existing regular-file read errors and unknown types remain fatal. Static archive validation
 must never inspect source paths on the current host. These facts establish
 post-collection state, not historical target immutability. Never upload facts files.
 
