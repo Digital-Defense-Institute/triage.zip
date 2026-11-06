@@ -67,7 +67,7 @@ def render_html(data):
     sections = []
     if pending:
         sections.append('''<details class="change-section change-pending">
-<summary><strong>Not yet released</strong><span>''' + str(len(pending)) + ''' proposals under review</span></summary>
+<summary><strong>Not yet released</strong><span>''' + str(len(pending)) + (' proposal' if len(pending) == 1 else ' proposals') + ''' under review</span></summary>
 <p class="change-pending-note">These changes are not in the current downloads.</p>
 ''' + "\n".join(html_entry(entry) for entry in pending) + "\n</details>")
     for year in years:
