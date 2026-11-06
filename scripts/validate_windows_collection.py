@@ -6,6 +6,8 @@ See https://docs.velociraptor.app/docs/deployment/offline_collections/collection
 The report contains counts and fixed diagnostics only, never evidence or log text.
 """
 import argparse
+from functools import lru_cache
+import os
 import json
 from pathlib import Path
 import re
@@ -29,6 +31,65 @@ class InvalidCollection(ValueError):
         self.diagnostics = diagnostics or {}
 
 
+def normalize_system_message(message):
+    return ' '.join(message.casefold().split()).strip(' .')
+
+
+@lru_cache(maxsize=1)
+def windows_system_error_messages():
+    """Map native standard Win32 message strings to fixed numeric identifiers.
+
+    No evidence text reaches this map: FormatMessageW supplies all keys. Ignore
+    insert placeholders; do not substitute a path into a standard message. Some
+    Windows codes share message text, so a match identifies a message signature,
+    rather than proving the original syscall error number.
+    """
+    if os.name != 'nt':
+        return {}
+    import ctypes
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    format_message = kernel.FormatMessageW
+    format_message.argtypes = [ctypes.c_uint32, ctypes.c_void_p, ctypes.c_uint32,
+                               ctypes.c_uint32, ctypes.POINTER(ctypes.c_wchar),
+                               ctypes.c_uint32, ctypes.c_void_p]
+    format_message.restype = ctypes.c_uint32
+    buffer = ctypes.create_unicode_buffer(4096)
+    messages = {}
+    # Win32 system error ranges, including filesystem, device and Winsock errors.
+    for code in range(1, 16000):
+        length = format_message(0x1000 | 0x200, None, code, 0,
+                                buffer, len(buffer), None)
+        if length:
+            message = normalize_system_message(buffer.value)
+            if message:
+                messages.setdefault(message, code)
+    return messages
+
+
+def native_error_category(error):
+    if not isinstance(error, str):
+        return None
+    message = normalize_system_message(error)
+    for standard, code in sorted(windows_system_error_messages().items(),
+                                 key=lambda item: len(item[0]), reverse=True):
+        if message == standard or message.endswith(': ' + standard):
+            return 'win32_error_' + str(code)
+    return None
+
+
+# Presence counts use only this finite vocabulary, never arbitrary error words.
+ERROR_TOKENS = frozenset({
+    'read', 'write', 'seek', 'buffer', 'eof', 'stream', 'context', 'closed',
+    'invalid', 'argument', 'directory', 'device', 'volume', 'compression',
+    'decompression', 'decompress', 'compressed', 'access', 'resource',
+    'function', 'incorrect', 'parameter', 'handle', 'file', 'path', 'data',
+    'size', 'offset', 'negative', 'unsupported', 'implemented', 'allocation',
+    'memory', 'range', 'sparse', 'denied', 'not', 'found', 'unable', 'error',
+    'operation', 'timeout', 'canceled', 'cancelled', 'permission', 'io',
+    'lznt1', 'attribute', 'ntfs', 'mft', 'end', 'process', 'sharing',
+})
+
+
 def upload_error_category(error):
     """Classify English Windows/Go errors without returning source text.
 
@@ -37,6 +98,9 @@ def upload_error_category(error):
     categories are diagnostics only: every category still fails validation.
     Unknown/localized errors deliberately remain other.
     """
+    native = native_error_category(error)
+    if native:
+        return native
     message = error.casefold() if isinstance(error, str) else ''
     if any(text in message for text in ('sharing violation', 'used by another process')):
         return 'sharing_violation'
@@ -56,7 +120,7 @@ def upload_error_category(error):
         'invalid_parameter': ('invalid argument', 'parameter is incorrect', 'invalid parameter'),
         'invalid_handle': ('bad file descriptor', 'handle is invalid', 'invalid handle', 'file already closed'),
         'directory': ('is a directory', 'directory name is invalid'),
-        'unsupported': ('not supported', 'not implemented', 'invalid function'),
+        'unsupported': ('not supported', 'not implemented', 'invalid function', 'incorrect function'),
         'ntfs_attribute': ('attribute not found', 'no data attribute', 'no $data', 'unable to find attribute'),
         'ntfs_compression': ('decompression', 'lznt1', 'compressed block'),
         'read_fault': ('read fault', 'cannot read from the specified device', 'reached the end of the file'),
@@ -90,7 +154,10 @@ def upload_target_type(source):
     if stem in ntfs_names:
         return 'ntfs_' + stem[1:]
     extension = basename.rsplit('.', 1)[-1] if '.' in basename else ''
-    if extension in {'evtx', 'pf', 'lnk', 'exe', 'dll', 'sys', 'log', 'dat', 'db', 'sqlite'}:
+    if extension in {'evtx', 'pf', 'lnk', 'exe', 'dll', 'sys', 'log', 'dat', 'db', 'sqlite',
+                     'blf', 'etl', 'regtrans-ms', 'hve', 'log1', 'log2', 'jfm',
+                     'tmp', 'automaticdestinations-ms', 'customdestinations-ms',
+                     'reg', 'xml', 'csv', 'json', 'pol', 'cab', 'edb'}:
         return 'extension_' + extension
     return 'other'
 
@@ -102,8 +169,13 @@ def record_upload_error(diagnostics, upload, source=None, archive=None):
         'stored_bytes': 0, 'malformed_stored_size': 0,
         'archive_member_present': 0, 'archive_bytes': 0,
         'nonzero_archive_member': 0, 'logical_size_positive': 0,
-        'logical_bytes': 0, 'accessors': {}, 'target_types': {}})
+        'logical_bytes': 0, 'accessors': {}, 'target_types': {}, 'error_tokens': {}})
     summary['count'] += 1
+    error_text = upload.get('Error')
+    if isinstance(error_text, str):
+        tokens = set(re.findall(r'[a-z]+', error_text.casefold())) & ERROR_TOKENS
+        for token in sorted(tokens):
+            summary['error_tokens'][token] = summary['error_tokens'].get(token, 0) + 1
     stored_name = upload.get('StoredName')
     accessor = 'unknown'
     if isinstance(stored_name, str):

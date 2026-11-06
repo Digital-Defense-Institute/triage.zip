@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import warnings
 import zipfile
 
@@ -50,6 +51,11 @@ def fixture():
 
 class WindowsCollectionTests(unittest.TestCase):
     def setUp(self):
+        # Keep English category fixtures deterministic on Windows too; native
+        # lookup behavior is separately tested with controlled system messages.
+        native_messages = patch.object(validator, 'windows_system_error_messages', return_value={})
+        native_messages.start()
+        self.addCleanup(native_messages.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.path = Path(self.temp.name) / 'collection.zip'
@@ -314,6 +320,33 @@ class WindowsCollectionTests(unittest.TestCase):
                 self.assertEqual(summary['logical_size_positive'], 1)
                 self.assertNotIn('SECRET', json.dumps(diagnostic))
                 self.assertNotIn('private', json.dumps(diagnostic))
+
+    def test_native_win32_error_signatures_are_numeric_and_redacted(self):
+        messages = {
+            'incorrect function': 1,
+            'the parameter is incorrect': 87,
+            'the request is not supported': 50,
+        }
+        with patch.object(validator, 'windows_system_error_messages', return_value=messages):
+            self.assertEqual(validator.upload_error_category('read SECRET: Incorrect function.'), 'win32_error_1')
+            self.assertEqual(validator.upload_error_category('The parameter is incorrect.\r\n'), 'win32_error_87')
+            self.assertEqual(validator.upload_error_category('SECRET: The request is not supported.'), 'win32_error_50')
+            self.assertEqual(validator.upload_error_category('SECRET incorrect function trailing'), 'unsupported')
+            diagnostic = {}
+            validator.record_upload_error(diagnostic, {'Error': 'read SECRET: Incorrect function.'})
+            self.assertEqual(diagnostic['win32_error_1']['error_tokens'], {'read': 1, 'incorrect': 1, 'function': 1})
+            self.assertNotIn('SECRET', json.dumps(diagnostic))
+
+    def test_unknown_error_vocabulary_is_finite(self):
+        diagnostic = {}
+        validator.record_upload_error(diagnostic, {'Error': 'SECRET CUSTOMTOKEN read buffer closed volume'})
+        self.assertEqual(diagnostic['other']['error_tokens'], {'read': 1, 'buffer': 1, 'closed': 1, 'volume': 1})
+        self.assertNotIn('secret', json.dumps(diagnostic))
+        self.assertNotIn('customtoken', json.dumps(diagnostic))
+
+    def test_additional_forensic_extensions_are_fixed(self):
+        for extension in ('blf', 'etl', 'regtrans-ms', 'hve', 'log1', 'log2', 'jfm', 'automaticdestinations-ms', 'edb'):
+            self.assertEqual(validator.upload_target_type('SECRET.' + extension), 'extension_' + extension)
 
     def test_row_count_detects_missing_result_stream(self):
         self.context(total_collected_rows=100)

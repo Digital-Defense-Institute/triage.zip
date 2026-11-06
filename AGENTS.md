@@ -58,6 +58,14 @@ collection containers without executing them. Keep regression fixtures synthetic
 do not commit real host evidence. Run PowerShell tests with `pwsh` installed and
 exercise the full production collector through the PR's Windows CI job.
 
+Do not accept `FINISHED` or exit code zero as proof of complete acquisition.
+Velociraptor 0.77.3 can retain read failures in an `Upload.Error` response while
+the collection finishes. A zero-byte ZIP member whose `StoredSize` matches zero
+can still represent a failed nonempty-file acquisition. Preserve those errors
+and investigate their cause before introducing any narrowly scoped exception.
+Upstream omits `StoredSize` when zero; accept that omission only for an actually
+empty member, and require separate verified nonempty evidence.
+
 Check all four output formats and both macOS signatures. A local macOS build
 does not prove Linux CI signing works; require the PR build to pass as well.
 For site edits, check download targets, OS tabs, and narrow-screen layout.
