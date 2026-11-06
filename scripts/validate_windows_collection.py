@@ -140,6 +140,13 @@ def validate(path):
 
         triage_rows = autoruns_rows = result_rows = successful_uploads = 0
         upload_errors = {}
+        reference_errors = {'malformed_reference': 0, 'missing_evidence': 0}
+        sizes = dict.fromkeys((
+            'missing_stored_size', 'missing_size_actual_zero',
+            'missing_size_actual_nonzero', 'expected_zero_actual_zero',
+            'expected_smaller_than_actual', 'expected_larger_than_actual',
+            'malformed_stored_size', 'matching_size', 'with_sparse_index',
+            'expected_bytes', 'actual_bytes'), 0)
         for name in names:
             if not name.startswith('results/') or not name.endswith('.json'):
                 continue
@@ -157,28 +164,68 @@ def validate(path):
                     upload = row.get('Upload')
                     if not isinstance(upload, dict):
                         continue
-                    if upload.get('Error'):
+                    errored = bool(upload.get('Error'))
+                    if errored:
                         record_upload_error(upload_errors, upload)
+                    stored_name = upload.get('StoredName')
+                    if not stored_name:
                         continue
-                    if not upload.get('StoredName'):
+                    if not isinstance(stored_name, str):
+                        reference_errors['malformed_reference'] += 1
                         continue
-                    stored_name = upload['StoredName']
-                    require(isinstance(stored_name, str), 'upload reference is malformed')
                     stored_name = stored_name.lstrip('/')
-                    require(stored_name.startswith('uploads/') and stored_name in unique_names,
-                            'triage upload references missing evidence')
+                    if not stored_name.startswith('uploads/') or stored_name not in unique_names:
+                        reference_errors['missing_evidence'] += 1
+                        continue
                     info = archive.getinfo(stored_name)
-                    stored_size = upload.get('StoredSize')
-                    require(isinstance(stored_size, int) and not isinstance(stored_size, bool) and
-                            stored_size == info.file_size, 'triage upload size does not match evidence')
-                    if info.file_size > 0 and row.get('SourceFile'):
+                    actual_size = info.file_size
+                    sizes['actual_bytes'] += actual_size
+                    # UploadResponse.AsDict and its JSON omitempty tag both omit
+                    # StoredSize when zero (uploads/api.go). This is valid only
+                    # for an empty ZIP member, never for nonempty evidence.
+                    missing_size = 'StoredSize' not in upload
+                    stored_size = upload.get('StoredSize', 0)
+                    if not isinstance(stored_size, int) or isinstance(stored_size, bool) or stored_size < 0:
+                        sizes['malformed_stored_size'] += 1
+                        continue
+                    sizes['expected_bytes'] += stored_size
+                    if missing_size:
+                        sizes['missing_stored_size'] += 1
+                        sizes['missing_size_actual_zero' if actual_size == 0
+                              else 'missing_size_actual_nonzero'] += 1
+                    elif stored_size == 0 and actual_size == 0:
+                        sizes['expected_zero_actual_zero'] += 1
+                    if stored_size < actual_size:
+                        sizes['expected_smaller_than_actual'] += 1
+                    elif stored_size > actual_size:
+                        sizes['expected_larger_than_actual'] += 1
+                    else:
+                        sizes['matching_size'] += 1
+                    if stored_name + '.idx' in unique_names:
+                        # Sparse containers retain physical bytes in the member;
+                        # the .idx maps them back to the logical Upload.Size.
+                        # StoredSize must still match physical bytes, exactly.
+                        sizes['with_sparse_index'] += 1
+                    if not errored and stored_size == actual_size and actual_size > 0 and row.get('SourceFile'):
                         successful_uploads += 1
 
-        if upload_errors:
-            raise InvalidCollection('triage upload reports an error', {
-                'upload_errors': upload_errors, 'result_rows': result_rows,
-                'triage_rows': triage_rows, 'autoruns_entries': autoruns_rows,
-                'verified_triage_uploads': successful_uploads})
+        diagnostics = {
+            'upload_errors': upload_errors, 'upload_sizes': sizes,
+            'upload_references': reference_errors, 'result_rows': result_rows,
+            'triage_rows': triage_rows, 'autoruns_entries': autoruns_rows,
+            'verified_triage_uploads': successful_uploads}
+        if upload_errors or any(reference_errors.values()) or any(sizes[key] for key in (
+                'malformed_stored_size', 'expected_smaller_than_actual',
+                'expected_larger_than_actual')):
+            if upload_errors:
+                diagnostic = 'triage upload reports an error'
+            elif reference_errors['malformed_reference']:
+                diagnostic = 'upload reference is malformed'
+            elif reference_errors['missing_evidence']:
+                diagnostic = 'triage upload references missing evidence'
+            else:
+                diagnostic = 'triage upload size does not match evidence'
+            raise InvalidCollection(diagnostic, diagnostics)
         require(triage_rows > 0, 'triage produced no result rows')
         require(autoruns_rows > 0, 'Autoruns produced no meaningful entries')
         require(successful_uploads > 0, 'triage produced no verified nonempty evidence upload')

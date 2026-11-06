@@ -226,6 +226,52 @@ class WindowsCollectionTests(unittest.TestCase):
         for error in ('The device is not ready.', 'Zugriff verweigert', {'Error': 'bad'}):
             self.assertEqual(validator.upload_error_category(error), 'other')
 
+    def test_omitted_zero_stored_size_matches_upstream(self):
+        self.files['uploads/auto/empty'] = b''
+        self.files[TRIAGE_RESULT] += jsonl({'SourceFile': 'empty', 'Upload': {
+            'StoredName': '/uploads/auto/empty', 'Size': 0}})
+        self.context(total_collected_rows=4)
+        self.write()
+        report = validator.validate(self.path)
+        self.assertTrue(report['valid'])
+        self.assertEqual(report['verified_triage_uploads'], 1)
+
+    def test_sparse_physical_size_can_differ_from_logical(self):
+        self.files[TRIAGE_RESULT] = jsonl({'SourceFile': 'sparse', 'Upload': {
+            'StoredName': '/' + EVIDENCE, 'StoredSize': 8, 'Size': 100000}})
+        self.files[EVIDENCE + '.idx'] = json.dumps({'ranges': [
+            {'file_offset': 0, 'original_offset': 0, 'file_length': 8, 'length': 8},
+            {'file_offset': 8, 'original_offset': 8, 'file_length': 0, 'length': 99992}]})
+        self.write()
+        self.assertTrue(validator.validate(self.path)['valid'])
+
+    def test_mixed_upload_failures_all_survive_size_mismatch(self):
+        rows = [
+            {'StoredName': '/' + EVIDENCE},
+            {'StoredName': '/' + EVIDENCE, 'StoredSize': 4},
+            {'StoredName': '/' + EVIDENCE, 'StoredSize': 12},
+            {'StoredName': '/' + EVIDENCE, 'StoredSize': 'bad'},
+            {'StoredName': '/uploads/missing', 'StoredSize': 10},
+            {'Error': 'Access is denied.'},
+            {'Error': 'partial', 'StoredName': '/' + EVIDENCE, 'StoredSize': 8},
+        ]
+        self.files[TRIAGE_RESULT] += jsonl(*({'SourceFile': 'SECRET', 'Upload': row} for row in rows))
+        self.write()
+        with self.assertRaises(validator.InvalidCollection) as failure:
+            validator.validate(self.path)
+        diagnostic = failure.exception.diagnostics
+        self.assertEqual(diagnostic['upload_errors']['access_denied']['count'], 1)
+        self.assertEqual(diagnostic['upload_errors']['other']['count'], 1)
+        self.assertEqual(diagnostic['upload_references']['missing_evidence'], 1)
+        sizes = diagnostic['upload_sizes']
+        self.assertEqual(sizes['missing_stored_size'], 1)
+        self.assertEqual(sizes['missing_size_actual_nonzero'], 1)
+        self.assertEqual(sizes['expected_smaller_than_actual'], 2)
+        self.assertEqual(sizes['expected_larger_than_actual'], 1)
+        self.assertEqual(sizes['malformed_stored_size'], 1)
+        self.assertEqual(diagnostic['verified_triage_uploads'], 1)
+        self.assertNotIn('SECRET', json.dumps(diagnostic))
+
     def test_row_count_detects_missing_result_stream(self):
         self.context(total_collected_rows=100)
         self.invalid('row count')
