@@ -15,16 +15,16 @@
       "sources": [{"label": "Issue #20", "url": "https://github.com/Digital-Defense-Institute/triage.zip/issues/20"}, {"label": "PR #23 (open)", "url": "https://github.com/Digital-Defense-Institute/triage.zip/pull/23"}]
     },
     {
-      "id": "unreleased-collection-validation",
-      "date": null,
+      "id": "2026-11-06-collection-validation",
+      "date": "2026-11-06",
       "title": "Check collection results before publication",
       "platforms": ["Windows", "Linux"],
-      "kind": "Proposed",
+      "kind": "Changed",
       "changes": [
         "Run the production Windows and Linux collectors on disposable CI runners and validate their resulting evidence archives before publishing a release.",
         "Require the published executables to match the tested binaries. Collection errors and incomplete evidence can block publication even when the collector exits successfully."
       ],
-      "sources": [{"label": "PR #21 (open)", "url": "https://github.com/Digital-Defense-Institute/triage.zip/pull/21"}]
+      "sources": [{"label": "PR #21", "url": "https://github.com/Digital-Defense-Institute/triage.zip/pull/21", "commit": "5feb67b7aab7e37f0cde43035fb456584a124074"}]
     },
     {
       "id": "2026-10-06-windows-x86-retired",

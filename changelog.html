@@ -26,9 +26,9 @@
         <div class="changelog-filters" role="group" aria-label="Filter changes by platform" hidden><button type="button" data-filter="all" aria-pressed="true">All platforms</button><button type="button" data-filter="windows" aria-pressed="false">Windows</button><button type="button" data-filter="linux" aria-pressed="false">Linux</button><button type="button" data-filter="macos" aria-pressed="false">macOS</button></div>
         <nav class="changelog-years" aria-label="Jump to year"><a href="#year-2026">2026</a><a href="#year-2025">2025</a></nav>
       </div>
-      <p class="changelog-count" role="status" aria-live="polite">13 dated updates</p>
+      <p class="changelog-count" role="status" aria-live="polite">14 dated updates</p>
       <details class="change-section change-pending">
-<summary><strong>Not yet released</strong><span>2 proposals under review</span></summary>
+<summary><strong>Not yet released</strong><span>1 proposals under review</span></summary>
 <p class="change-pending-note">These changes are not in the current downloads.</p>
 <article class="change-entry change-proposed" id="unreleased-windows-evidence" data-platforms="windows" data-dated="false">
   <div class="change-date"><span>Not yet released</span></div>
@@ -39,17 +39,17 @@
     <div class="change-sources" aria-label="Sources"><a href="https://github.com/Digital-Defense-Institute/triage.zip/issues/20">Issue #20</a><a href="https://github.com/Digital-Defense-Institute/triage.zip/pull/23">PR #23 (open)</a></div>
   </div>
 </article>
-<article class="change-entry change-proposed" id="unreleased-collection-validation" data-platforms="windows linux" data-dated="false">
-  <div class="change-date"><span>Not yet released</span></div>
-  <div class="change-body">
-    <div class="change-tags"><span class="change-kind">Proposed</span><span class="change-platform">Windows</span><span class="change-platform">Linux</span></div>
-    <h3><a class="change-permalink" href="#unreleased-collection-validation">Check collection results before publication</a></h3>
-    <ul><li>Run the production Windows and Linux collectors on disposable CI runners and validate their resulting evidence archives before publishing a release.</li><li>Require the published executables to match the tested binaries. Collection errors and incomplete evidence can block publication even when the collector exits successfully.</li></ul>
-    <div class="change-sources" aria-label="Sources"><a href="https://github.com/Digital-Defense-Institute/triage.zip/pull/21">PR #21 (open)</a></div>
-  </div>
-</article>
 </details>
 <section class="change-section change-year" id="year-2026" aria-labelledby="heading-2026"><h2 class="change-year-heading" id="heading-2026">2026</h2>
+<article class="change-entry" id="2026-11-06-collection-validation" data-platforms="windows linux" data-dated="true">
+  <div class="change-date"><time datetime="2026-11-06">Nov 06, 2026</time></div>
+  <div class="change-body">
+    <div class="change-tags"><span class="change-kind">Changed</span><span class="change-platform">Windows</span><span class="change-platform">Linux</span></div>
+    <h3><a class="change-permalink" href="#2026-11-06-collection-validation">Check collection results before publication</a></h3>
+    <ul><li>Run the production Windows and Linux collectors on disposable CI runners and validate their resulting evidence archives before publishing a release.</li><li>Require the published executables to match the tested binaries. Collection errors and incomplete evidence can block publication even when the collector exits successfully.</li></ul>
+    <div class="change-sources" aria-label="Sources"><a href="https://github.com/Digital-Defense-Institute/triage.zip/pull/21">PR #21</a></div>
+  </div>
+</article>
 <article class="change-entry" id="2026-10-06-windows-x86-retired" data-platforms="windows linux macos" data-dated="true">
   <div class="change-date"><time datetime="2026-10-06">Oct 06, 2026</time></div>
   <div class="change-body">
