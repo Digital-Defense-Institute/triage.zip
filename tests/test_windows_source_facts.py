@@ -1,4 +1,4 @@
-"""Only synthetic archives and mocked Windows filesystem lookups are used."""
+"""Synthetic archives; native Windows coverage touches only an owned temp file."""
 import hashlib
 import importlib.util
 import json
@@ -61,6 +61,45 @@ class WindowsSourceFactsTests(unittest.TestCase):
             self.assertEqual(result['collection_sha256'], hashlib.sha256(archive.read_bytes()).hexdigest())
             self.assertEqual(set(result['sources']), {source})
             probe.assert_called_once_with(source)
+
+    @unittest.skipUnless(sys.platform == 'win32', 'requires native Windows filesystem errors')
+    def test_native_deleted_temp_file_facts_qualify_synthetic_collection(self):
+        # This creates and deletes literal fixture bytes; no collector or .exe
+        # is executed. Only the source-facts probe uses the native filesystem.
+        from test_windows_collection import fixture, jsonl, TRIAGE_RESULT
+        temp_root = os.environ.get('TEMP') or tempfile.gettempdir()
+        with tempfile.TemporaryDirectory(dir=temp_root) as folder:
+            source = Path(folder) / 'fake.exe'
+            source.write_bytes(b'literal fixture bytes, never executable')
+            positive_size = source.stat().st_size
+            self.assertGreater(positive_size, 0)
+            source_path = str(source)
+            scope = facts._eligibility.windows_temp_scope(source_path)
+            self.assertIsNotNone(scope, 'Windows TEMP must be in an eligible local temporary scope')
+            source.unlink()
+
+            files = fixture()
+            files[TRIAGE_RESULT] += jsonl({
+                'SourceFile': source_path, 'FileSize': positive_size,
+                'Upload': {'Error': 'CreateFile fixture: The system cannot find the file specified.'}})
+            files['results/Windows.Triage.Targets%2FAll_Matches_Metadata.json'] = jsonl({
+                'SourceFile': source_path, 'Size': positive_size, 'Type': 'PsList/From_Pslist'})
+            archive = Path(folder) / 'synthetic-collection.zip'
+            with zipfile.ZipFile(archive, 'w') as output:
+                for name, data in files.items():
+                    output.writestr(name, data)
+
+            report_facts = facts.gather_facts(archive)
+            observed = report_facts['sources'][source_path]
+            self.assertEqual(observed['source_type'], 'missing')
+            self.assertIn(observed['source_winerror'], (2, 3))
+            self.assertEqual(report_facts['collection_sha256'], hashlib.sha256(archive.read_bytes()).hexdigest())
+            report = facts._eligibility.validate(archive, report_facts)
+            self.assertTrue(report['valid'])
+            self.assertEqual(report['vanished_temporary_targets'][scope], 1)
+            self.assertEqual(sum(report['vanished_temporary_targets'].values()), 1)
+            self.assertEqual(report['verified_triage_uploads'], 1)
+            self.assertNotIn(source_path, json.dumps(report))
 
     def test_refuses_nonhosted_cli_without_creating_facts(self):
         with tempfile.TemporaryDirectory() as folder:
