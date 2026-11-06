@@ -8,6 +8,10 @@
 
 ## Automated Builds
 
+Follow dated changes to collector behavior in the [collector changelog](https://triage.zip/changelog.html)
+or [CHANGELOG.md](CHANGELOG.md). Proposals under review are shown separately from
+the historical changes.
+
 The [CI workflow](.github/workflows/ci.yml) builds all four collectors on pushes to `main`, pull requests targeting `main`, and manual workflow dispatches. A scheduled run every Monday at 18:00 UTC checks the upstream Velociraptor version and the ETags of both `Windows.Triage.Targets` and `Linux.Triage.UAC`; scheduled builds are skipped when all three are unchanged.
 
 The build downloads the upstream Velociraptor binaries and triage artifact bundles, validates artifact definitions (errors are fatal; upstream warnings are advisory), generates collectors from the platform configurations, and records version, artifact hashes/ETags, and build time in [data/velociraptor-version.json](data/velociraptor-version.json). Successful builds on `main` publish the four binaries to the `latest` GitHub release only when the upstream version or artifact ETags change, collector inputs change across the push, or a manual run is requested. Docs/site-only pushes still validate the build but do not republish unchanged inputs. Pull request builds never publish. Version metadata is committed only after release creation succeeds.
@@ -66,6 +70,25 @@ Fork this repository and adjust the configuration for the target platform:
 [build_collector.sh](build_collector.sh) builds all four collectors on Linux and is the script used by CI. [build_collector_macos.sh](build_collector_macos.sh) provides a macOS build path. Both use shared helpers in [lib/collector_common.sh](lib/collector_common.sh).
 
 CI builds PR and `main` changes even when the upstream version and artifact ETags are unchanged, so configuration and build-script changes are exercised. See [Automated Builds](#automated-builds) for the schedule and release behavior.
+
+## Maintaining the changelog
+
+Edit [data/changelog.json](data/changelog.json), then run
+`python3 site/render_changelog.py` to regenerate both `CHANGELOG.md` and
+`changelog.html`. The regression suite checks that these views match their source.
+No additional build tool or Markdown package is needed on GitHub Pages.
+
+Use an undated `Proposed` entry while a change is under review. After collector
+publication is verified, give it the UTC publication date, update its kind and
+source links, and regenerate both views. Explain changes to evidence coverage,
+platform support, archive format, invocation, or release behavior, including
+defaults and any action users need to take. Keep engine versions explicitly
+identified as Velociraptor versions; triage.zip uses dates rather than a second
+version number.
+
+The retroactive history uses verified main-branch commit/merge dates where exact
+publication dates could not be recovered. Routine upstream refreshes are not
+individually reconstructed. Keep that distinction visible in both views.
 
 ## Further Information
 

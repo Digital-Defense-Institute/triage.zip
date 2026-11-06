@@ -46,7 +46,9 @@ class PublicationPolicyTests(unittest.TestCase):
 
     def test_docs_site_tests_and_metadata_push_only_validates(self):
         for path in ('README.md', 'index.html', 'AGENTS.md', 'tests/test_example.py',
-                     'data/velociraptor-version.json'):
+                     'data/velociraptor-version.json', 'data/changelog.json',
+                     'site/render_changelog.py', 'changelog.html', 'CHANGELOG.md',
+                     'css/changelog.css', 'js/changelog.js'):
             self.commit(path)
         self.assert_policy(True, False)
 

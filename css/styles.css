@@ -113,6 +113,23 @@ body {
     gap: 0.6rem;
 }
 
+.collector-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.collector-links .button {
+    flex: 1 1 180px;
+    padding: 0.8rem 1rem;
+    font-size: 0.9rem;
+}
+
+.collector-links a:focus-visible {
+    outline: 2px solid var(--primary-accent);
+    outline-offset: 4px;
+}
+
 .platform-group {
     display: flex;
     align-items: center;
