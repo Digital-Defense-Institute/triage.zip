@@ -191,6 +191,41 @@ class WindowsCollectionTests(unittest.TestCase):
             'StoredName': '/' + EVIDENCE, 'StoredSize': 8, 'Error': 'partial'}})
         self.invalid('upload reports an error')
 
+    def test_all_upload_errors_are_counted_and_redacted(self):
+        failures = [
+            {'Error': r'open C:\SECRET: The system cannot find the file specified.'},
+            {'Error': r'open C:\SECRET: The system cannot find the path specified.'},
+            {'Error': r'open C:\SECRET: Access is denied.'},
+            {'Error': r'open C:\SECRET: The process cannot access the file because it is being used by another process.'},
+            {'Error': 'SECRET partial copy failed', 'StoredName': '/' + EVIDENCE, 'StoredSize': 4},
+            {'Error': 'SECRET unknown failure', 'StoredName': '/' + EVIDENCE, 'StoredSize': 'bad'},
+        ]
+        self.files[TRIAGE_RESULT] += jsonl(*({'SourceFile': 'SECRET', 'Upload': upload}
+                                          for upload in failures))
+        self.context(total_collected_rows=9)
+        self.write()
+        report_path = Path(self.temp.name) / 'report.json'
+        result = subprocess.run([sys.executable, str(SCRIPT), str(self.path),
+                                 '--report', str(report_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        report = json.loads(report_path.read_text())
+        errors = report['diagnostics']['upload_errors']
+        self.assertEqual(errors['missing_file']['count'], 2)
+        self.assertEqual(errors['access_denied']['count'], 1)
+        self.assertEqual(errors['sharing_violation']['count'], 1)
+        self.assertEqual(errors['other']['count'], 2)
+        self.assertEqual(errors['other']['stored_name_present'], 2)
+        self.assertEqual(errors['other']['nonzero_stored_size'], 1)
+        self.assertEqual(errors['other']['stored_bytes'], 4)
+        self.assertEqual(errors['other']['malformed_stored_size'], 1)
+        self.assertEqual(report['diagnostics']['verified_triage_uploads'], 1)
+        self.assertNotIn('SECRET', result.stdout + result.stderr + report_path.read_text())
+        self.assertNotIn(EVIDENCE, result.stdout + result.stderr + report_path.read_text())
+
+    def test_unknown_and_localized_upload_errors_remain_other(self):
+        for error in ('The device is not ready.', 'Zugriff verweigert', {'Error': 'bad'}):
+            self.assertEqual(validator.upload_error_category(error), 'other')
+
     def test_row_count_detects_missing_result_stream(self):
         self.context(total_collected_rows=100)
         self.invalid('row count')

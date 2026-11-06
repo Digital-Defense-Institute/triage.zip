@@ -24,7 +24,44 @@ FATAL_MESSAGE = re.compile(
 
 
 class InvalidCollection(ValueError):
-    pass
+    def __init__(self, diagnostic, diagnostics=None):
+        super().__init__(diagnostic)
+        self.diagnostics = diagnostics or {}
+
+
+def upload_error_category(error):
+    """Classify English Windows/Go errors without returning source text.
+
+    vql/networking/upload.go preserves accessor Open errors in Upload.Error;
+    reporting/container.go can also attach errors after a partial copy. These
+    categories are diagnostics only: every category still fails validation.
+    Unknown/localized errors deliberately remain other.
+    """
+    message = error.casefold() if isinstance(error, str) else ''
+    if any(text in message for text in ('sharing violation', 'used by another process')):
+        return 'sharing_violation'
+    if any(text in message for text in ('access is denied', 'access denied', 'permission denied')):
+        return 'access_denied'
+    if any(text in message for text in ('cannot find the file specified',
+                                       'cannot find the path specified',
+                                       'no such file or directory', 'file does not exist')):
+        return 'missing_file'
+    return 'other'
+
+
+def record_upload_error(diagnostics, upload):
+    category = upload_error_category(upload.get('Error'))
+    summary = diagnostics.setdefault(category, {
+        'count': 0, 'stored_name_present': 0, 'nonzero_stored_size': 0,
+        'stored_bytes': 0, 'malformed_stored_size': 0})
+    summary['count'] += 1
+    summary['stored_name_present'] += bool(upload.get('StoredName'))
+    size = upload.get('StoredSize', 0)
+    if isinstance(size, int) and not isinstance(size, bool) and size >= 0:
+        summary['stored_bytes'] += size
+        summary['nonzero_stored_size'] += size > 0
+    else:
+        summary['malformed_stored_size'] += 1
 
 
 def require(condition, diagnostic):
@@ -102,6 +139,7 @@ def validate(path):
         require(log_rows > 0, 'collection log is empty')
 
         triage_rows = autoruns_rows = result_rows = successful_uploads = 0
+        upload_errors = {}
         for name in names:
             if not name.startswith('results/') or not name.endswith('.json'):
                 continue
@@ -119,7 +157,9 @@ def validate(path):
                     upload = row.get('Upload')
                     if not isinstance(upload, dict):
                         continue
-                    require(not upload.get('Error'), 'triage upload reports an error')
+                    if upload.get('Error'):
+                        record_upload_error(upload_errors, upload)
+                        continue
                     if not upload.get('StoredName'):
                         continue
                     stored_name = upload['StoredName']
@@ -134,6 +174,11 @@ def validate(path):
                     if info.file_size > 0 and row.get('SourceFile'):
                         successful_uploads += 1
 
+        if upload_errors:
+            raise InvalidCollection('triage upload reports an error', {
+                'upload_errors': upload_errors, 'result_rows': result_rows,
+                'triage_rows': triage_rows, 'autoruns_entries': autoruns_rows,
+                'verified_triage_uploads': successful_uploads})
         require(triage_rows > 0, 'triage produced no result rows')
         require(autoruns_rows > 0, 'Autoruns produced no meaningful entries')
         require(successful_uploads > 0, 'triage produced no verified nonempty evidence upload')
@@ -160,6 +205,8 @@ def main():
         # Do not expose OS exceptions containing evidence paths or archive data.
         diagnostic = str(error) if isinstance(error, InvalidCollection) else 'cannot read valid collection ZIP'
         report = {'valid': False, 'error': diagnostic}
+        if isinstance(error, InvalidCollection) and error.diagnostics:
+            report['diagnostics'] = error.diagnostics
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

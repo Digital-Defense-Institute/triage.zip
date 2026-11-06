@@ -128,6 +128,8 @@ class PublicationPolicyTests(unittest.TestCase):
         self.assertIn("if: needs.build.outputs.publish == 'true' && needs.windows_validate.result == 'success'", publish)
         # A failed/timed out/cancelled/skipped Windows job cannot enter publish.
         self.assertNotIn('always()', publish)
+        self.assertIn('concurrency:\n      group: triage-latest-publication\n      cancel-in-progress: false', publish)
+        self.assertNotIn('concurrency:', build + windows)
         self.assertLess(build.index('id: policy'), build.index('- name: Run build script'))
         for step in ('Commit version metadata', 'Delete existing latest release',
                      'Delete old latest tag', 'Create Latest Release'):
@@ -139,6 +141,29 @@ class PublicationPolicyTests(unittest.TestCase):
                         publish.index('- name: Commit version metadata'))
         for script in ('build_collector.sh', 'build_collector_macos.sh'):
             self.assertNotIn('VELO_VERSION_CHANGED=', (ROOT / script).read_text())
+
+    def test_metadata_push_works_without_checkout_branch_upstream(self):
+        # SHA checkout + switch -C creates main without tracking configuration.
+        # Exercise the actual metadata-push command against an empty local remote.
+        import shlex
+        publish = self.workflow_jobs()['publish']
+        metadata_step = publish.split('      - name: Commit version metadata\n', 1)[1]
+        pushes = [line.strip() for line in metadata_step.splitlines()
+                  if line.strip().startswith('git push')]
+        self.assertEqual(pushes, ['git push origin HEAD:refs/heads/main'])
+        with tempfile.TemporaryDirectory() as remote_dir:
+            subprocess.check_call(['git', 'init', '--bare', '-q', remote_dir])
+            self.git('remote', 'add', 'origin', remote_dir)
+            sha = self.git('rev-parse', 'HEAD').strip()
+            self.git('switch', '--detach', '-q', sha)
+            self.git('switch', '-C', 'main', '-q', sha)
+            upstream = subprocess.run(['git', 'rev-parse', '--abbrev-ref', 'main@{upstream}'],
+                                      cwd=self.repo, capture_output=True, text=True)
+            self.assertNotEqual(upstream.returncode, 0)
+            self.git(*shlex.split(pushes[0])[1:])
+            published_sha = subprocess.check_output(
+                ['git', '--git-dir', remote_dir, 'rev-parse', 'refs/heads/main'], text=True).strip()
+            self.assertEqual(published_sha, sha)
 
     def test_same_immutable_build_payloads_are_validated_and_published(self):
         jobs = self.workflow_jobs()
