@@ -28,7 +28,7 @@
       </div>
       <p class="changelog-count" role="status" aria-live="polite">14 dated updates</p>
       <details class="change-section change-pending">
-<summary><strong>Not yet released</strong><span>1 proposals under review</span></summary>
+<summary><strong>Not yet released</strong><span>1 proposal under review</span></summary>
 <p class="change-pending-note">These changes are not in the current downloads.</p>
 <article class="change-entry change-proposed" id="unreleased-windows-evidence" data-platforms="windows" data-dated="false">
   <div class="change-date"><span>Not yet released</span></div>
@@ -44,10 +44,10 @@
 <article class="change-entry" id="2026-11-06-collection-validation" data-platforms="windows linux" data-dated="true">
   <div class="change-date"><time datetime="2026-11-06">Nov 06, 2026</time></div>
   <div class="change-body">
-    <div class="change-tags"><span class="change-kind">Changed</span><span class="change-platform">Windows</span><span class="change-platform">Linux</span></div>
-    <h3><a class="change-permalink" href="#2026-11-06-collection-validation">Check collection results before publication</a></h3>
-    <ul><li>Run the production Windows and Linux collectors on disposable CI runners and validate their resulting evidence archives before publishing a release.</li><li>Require the published executables to match the tested binaries. Collection errors and incomplete evidence can block publication even when the collector exits successfully.</li></ul>
-    <div class="change-sources" aria-label="Sources"><a href="https://github.com/Digital-Defense-Institute/triage.zip/pull/21">PR #21</a></div>
+    <div class="change-tags"><span class="change-kind">Added</span><span class="change-platform">Windows</span><span class="change-platform">Linux</span></div>
+    <h3><a class="change-permalink" href="#2026-11-06-collection-validation">Validate Windows and Linux collections before publication</a></h3>
+    <ul><li>Run the production Windows and Linux collectors on disposable CI runners and validate ZIP integrity, completed collection metadata, meaningful artifact results, and acquired file bytes before publishing a release.</li><li>Require both runtime checks to pass and match the published Windows and Linux executables to the tested binaries by SHA256. Collection errors and incomplete evidence can block publication even when the collector exits successfully.</li><li>Report narrowly verified non-file and temporary-file skips separately. Unexpected errors, partial uploads, and missing evidence still block publication.</li><li>Keep collected evidence, raw logs, and source-path facts on the disposable runners. Retain only redacted validation summaries for three days.</li></ul>
+    <div class="change-sources" aria-label="Sources"><a href="https://github.com/Digital-Defense-Institute/triage.zip/pull/21">PR #21</a><a href="https://github.com/Digital-Defense-Institute/triage.zip/actions/runs/42257200819">First validated publication</a></div>
   </div>
 </article>
 <article class="change-entry" id="2026-10-06-windows-x86-retired" data-platforms="windows linux macos" data-dated="true">

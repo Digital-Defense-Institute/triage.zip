@@ -22,14 +22,16 @@ These proposals are under review and are not included in the current downloads.
 
 Sources: [Issue #20](https://github.com/Digital-Defense-Institute/triage.zip/issues/20); [PR #23 (open)](https://github.com/Digital-Defense-Institute/triage.zip/pull/23)
 
-## 2026-11-06 — Check collection results before publication
+## 2026-11-06 — Validate Windows and Linux collections before publication
 
-**Changed** · Windows, Linux
+**Added** · Windows, Linux
 
-- Run the production Windows and Linux collectors on disposable CI runners and validate their resulting evidence archives before publishing a release.
-- Require the published executables to match the tested binaries. Collection errors and incomplete evidence can block publication even when the collector exits successfully.
+- Run the production Windows and Linux collectors on disposable CI runners and validate ZIP integrity, completed collection metadata, meaningful artifact results, and acquired file bytes before publishing a release.
+- Require both runtime checks to pass and match the published Windows and Linux executables to the tested binaries by SHA256. Collection errors and incomplete evidence can block publication even when the collector exits successfully.
+- Report narrowly verified non-file and temporary-file skips separately. Unexpected errors, partial uploads, and missing evidence still block publication.
+- Keep collected evidence, raw logs, and source-path facts on the disposable runners. Retain only redacted validation summaries for three days.
 
-Sources: [PR #21](https://github.com/Digital-Defense-Institute/triage.zip/pull/21)
+Sources: [PR #21](https://github.com/Digital-Defense-Institute/triage.zip/pull/21); [First validated publication](https://github.com/Digital-Defense-Institute/triage.zip/actions/runs/42257200819)
 
 ## 2026-10-06 — Windows x86 retired; builds support Velociraptor 0.77.3
 

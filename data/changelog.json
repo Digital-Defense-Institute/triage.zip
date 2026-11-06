@@ -17,14 +17,19 @@
     {
       "id": "2026-11-06-collection-validation",
       "date": "2026-11-06",
-      "title": "Check collection results before publication",
+      "title": "Validate Windows and Linux collections before publication",
       "platforms": ["Windows", "Linux"],
-      "kind": "Changed",
+      "kind": "Added",
       "changes": [
-        "Run the production Windows and Linux collectors on disposable CI runners and validate their resulting evidence archives before publishing a release.",
-        "Require the published executables to match the tested binaries. Collection errors and incomplete evidence can block publication even when the collector exits successfully."
+        "Run the production Windows and Linux collectors on disposable CI runners and validate ZIP integrity, completed collection metadata, meaningful artifact results, and acquired file bytes before publishing a release.",
+        "Require both runtime checks to pass and match the published Windows and Linux executables to the tested binaries by SHA256. Collection errors and incomplete evidence can block publication even when the collector exits successfully.",
+        "Report narrowly verified non-file and temporary-file skips separately. Unexpected errors, partial uploads, and missing evidence still block publication.",
+        "Keep collected evidence, raw logs, and source-path facts on the disposable runners. Retain only redacted validation summaries for three days."
       ],
-      "sources": [{"label": "PR #21", "url": "https://github.com/Digital-Defense-Institute/triage.zip/pull/21", "commit": "5feb67b7aab7e37f0cde43035fb456584a124074"}]
+      "sources": [
+        {"label": "PR #21", "url": "https://github.com/Digital-Defense-Institute/triage.zip/pull/21", "commit": "5feb67b7aab7e37f0cde43035fb456584a124074"},
+        {"label": "First validated publication", "url": "https://github.com/Digital-Defense-Institute/triage.zip/actions/runs/42257200819"}
+      ]
     },
     {
       "id": "2026-10-06-windows-x86-retired",
