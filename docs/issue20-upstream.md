@@ -1,7 +1,7 @@
 # Issue 20 implementation and upstream follow-up
 
 This work follows [issue 20](https://github.com/Digital-Defense-Institute/triage.zip/issues/20).
-The changes described here are local and unpublished.
+The collector changes are proposed in [PR #23](https://github.com/Digital-Defense-Institute/triage.zip/pull/23) and have not been published in a collector release.
 
 ## Changes in triage.zip
 
@@ -14,12 +14,12 @@ The changes described here are local and unpublished.
 Prefetch already has parsed results through `_Live`. No custom artifact or
 rewritten copy of the upstream triage artifact is packaged.
 
-## Prepared upstream contributions
+## Upstream contributions under review
 
 | Project | Change | Compatibility |
 | --- | --- | --- |
-| [Triage Artifact project](https://github.com/Velocidex/velociraptor-triage-collector) | Add `ExcludePathRegex` and `ExcludeDirectoryRegex` to `Windows.Triage.Targets` | Empty defaults preserve current acquisition. Path filtering covers static and adaptive upload routes; directory filtering prunes glob recursion. |
-| [Velociraptor](https://github.com/Velocidex/velociraptor) | Add `MaxFileSize` and `ModifiedWithinDays` to the existing `Windows.Search.FileFinder` | Zero defaults disable the new filters. Negative limits stop before searching. Relative age intersects existing absolute timestamp filters. |
+| [Triage Artifact PR #41](https://github.com/Velocidex/velociraptor-triage-collector/pull/41) | Add `ExcludePathRegex` and `ExcludeDirectoryRegex` to `Windows.Triage.Targets` | Empty defaults preserve current acquisition. Path filtering covers static and adaptive upload routes; directory filtering prunes glob recursion. |
+| [Velociraptor PR #5129](https://github.com/Velocidex/velociraptor/pull/5129) | Add `MaxFileSize` and `ModifiedWithinDays` to the existing `Windows.Search.FileFinder` | Zero defaults disable the new filters. Negative limits stop before searching. Relative age intersects existing absolute timestamp filters. |
 
 The exclusion contribution starts from upstream commit `78968d0`. The FileFinder
 contribution starts from `6d45bf88b3a6253f78cc7af6ac6737fbf1b355a8`.
@@ -67,5 +67,5 @@ Independent Astra review found no actionable issues. The five parsers also passe
 see [runtime results and limits](benchmarks/2026-11-06-windows-parser-runtime.md).
 That experiment isolates the parsers: full parser-plus-MOTW offline collection
 and representative workstation qualification remain outstanding. Linux PR CI and
-upstream maintainer review remain required. No release publication or upstream
-submission has been performed.
+upstream maintainer review remain required. Both upstream PRs are open; no
+collector release has been published.
