@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import warnings
 import zipfile
 
@@ -243,6 +244,42 @@ class LinuxCollectionTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertFalse(json.loads(result.stdout)['valid'])
         self.assertNotIn('SECRET', result.stdout + result.stderr)
+
+    def test_posix_errno_signatures_are_fixed_identifiers(self):
+        messages = {'no such file or directory': 'ENOENT', 'is a directory': 'EISDIR',
+                    'permission denied': 'EACCES', 'too many levels of symbolic links': 'ELOOP'}
+        with patch.object(validator, 'posix_error_messages', return_value=messages):
+            for message, code in messages.items():
+                self.assertEqual(validator.error_category('open SECRET: ' + message), 'errno_' + code)
+            self.assertEqual(validator.error_category('SECRET unknown message'), 'other')
+        self.assertEqual(validator.error_category('Only regular files supported (not /SECRET)'), 'non_regular_file')
+
+    def test_symlink_error_diagnostics_are_correlated_and_redacted(self):
+        self.files[METADATA] += jsonl({'SourceFile': '/etc/SECRET', 'Size': 9, 'Accessor': 'auto'})
+        self.files[UPLOADS] += jsonl({'SourceFile': '/etc/SECRET', 'Details': {'Stat': {
+            'Mode': 1 << 27, 'ModeStr': 'Lrwxrwxrwx', 'Data': {'Link': '/dev/null'}}},
+            'Upload': {'Error': 'Only regular files supported (not /SECRET)'}})
+        self.write()
+        with self.assertRaises(validator.InvalidCollection) as error:
+            validator.validate(self.path)
+        diagnostic = error.exception.diagnostics['upload_errors']['non_regular_file']
+        self.assertEqual(diagnostic['metadata_join'], {'matched': 1})
+        self.assertEqual(diagnostic['detail_file_shapes'], {'symlink': 1})
+        self.assertEqual(diagnostic['metadata_file_shapes'], {'unknown': 1})
+        self.assertEqual(diagnostic['detail_mode_types'], {'number': 1})
+        self.assertEqual(diagnostic['source_families'], {'etc': 1})
+        self.assertEqual(diagnostic['link_target_shapes'], {'absolute': 1})
+        self.assertEqual(diagnostic['fixed_link_targets'], {'dev_null': 1})
+        self.assertNotIn('SECRET', json.dumps(diagnostic))
+        self.assertNotIn('/dev/null', json.dumps(diagnostic))
+
+    def test_file_shape_supports_go_mode_and_modestr(self):
+        for stat, expected in (({'Mode': 1 << 31}, 'directory'),
+                               ({'Mode': 1 << 25}, 'fifo'), ({'Mode': 1 << 24}, 'socket'),
+                               ({'Mode': 420}, 'regular_file'),
+                               ({'ModeStr': 'Lrwxrwxrwx'}, 'symlink'),
+                               ({'Data': {'Link': '../SECRET'}}, 'symlink')):
+            self.assertEqual(validator.file_shape(stat), expected)
 
     def test_row_count_must_be_positive_and_plausible(self):
         for value in (0, 100000, '1', True):

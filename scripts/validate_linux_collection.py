@@ -7,6 +7,9 @@ which recursively collects /etc. No evidence content or raw errors enter reports
 """
 from importlib.util import module_from_spec, spec_from_file_location
 import json
+import errno
+import os
+from functools import lru_cache
 from pathlib import Path
 import re
 import sys
@@ -40,8 +43,99 @@ def production_targets(context):
     require(value == ['_All'], 'production UAC _All was not requested')
 
 
+@lru_cache(maxsize=1)
+def posix_error_messages():
+    # Error strings come exclusively from the host's libc, never evidence.
+    result = {}
+    for code, symbol in sorted(errno.errorcode.items()):
+        try:
+            result.setdefault(os.strerror(code).casefold().strip(), symbol)
+        except ValueError:
+            continue
+    return result
+
+
+def fixed_path_family(path):
+    if not isinstance(path, str):
+        return 'non_string'
+    for prefix, family in (('/proc/', 'proc'), ('/sys/', 'sys'), ('/dev/', 'dev'),
+                           ('/run/', 'run'), ('/var/run/', 'var_run'),
+                           ('/tmp/', 'tmp'), ('/var/tmp/', 'var_tmp'),
+                           ('/etc/', 'etc'), ('/var/log/', 'var_log'),
+                           ('/var/lib/', 'var_lib'), ('/home/', 'home'),
+                           ('/root/', 'root'), ('/usr/', 'usr')):
+        if path.startswith(prefix) or path == prefix[:-1]:
+            return family
+    return 'other'
+
+
+def json_type(value):
+    return ('null' if value is None else 'boolean' if isinstance(value, bool)
+            else 'object' if isinstance(value, dict) else 'array' if isinstance(value, list)
+            else 'string' if isinstance(value, str) else 'number' if isinstance(value, (int, float)) else 'other')
+
+
+def file_shape(stat):
+    if not isinstance(stat, dict):
+        return 'absent'
+    if stat.get('IsDir') is True:
+        return 'directory'
+    data = stat.get('Data')
+    if stat.get('IsLink') is True or isinstance(data, dict) and isinstance(data.get('Link'), str) and data['Link']:
+        return 'symlink'
+    mode = stat.get('Mode', stat.get('ModeStr'))
+    if isinstance(mode, str) and mode:
+        return {'d': 'directory', 'l': 'symlink', 'p': 'fifo', 's': 'socket',
+                'c': 'character_device', 'b': 'block_device', '-': 'regular_file'}.get(mode[0].casefold(), 'other')
+    if isinstance(mode, int) and not isinstance(mode, bool):
+        # Go os.FileMode stores type flags in its high bits.
+        for bit, shape in ((31, 'directory'), (27, 'symlink'), (25, 'fifo'),
+                           (24, 'socket'), (26, 'device')):
+            if mode & (1 << bit):
+                return shape
+        return 'regular_file'
+    return 'unknown'
+
+
+def increment(summary, key, value):
+    counts = summary.setdefault(key, {})
+    counts[value] = counts.get(value, 0) + 1
+
+
+def error_metadata(summary, row, metadata):
+    source = row.get('SourceFile')
+    increment(summary, 'source_json_types', json_type(source))
+    increment(summary, 'source_families', fixed_path_family(source))
+    increment(summary, 'metadata_join', 'matched' if metadata else 'absent')
+    details = row.get('Details')
+    stat = details.get('Stat') if isinstance(details, dict) else None
+    increment(summary, 'detail_file_shapes', file_shape(stat))
+    increment(summary, 'metadata_file_shapes', file_shape(metadata))
+    mode = stat.get('Mode') if isinstance(stat, dict) else None
+    increment(summary, 'detail_mode_types', json_type(mode))
+    data = stat.get('Data') if isinstance(stat, dict) else None
+    link = data.get('Link') if isinstance(data, dict) else None
+    increment(summary, 'link_target_types', json_type(link))
+    if isinstance(link, str):
+        shape = ('absolute' if link.startswith('/') else 'relative_parent' if link.startswith('../')
+                 else 'relative_current' if link.startswith('./') else 'relative')
+        increment(summary, 'link_target_shapes', shape)
+        increment(summary, 'link_target_families', fixed_path_family(link))
+        fixed_target = {'/dev/null': 'dev_null', '/dev/zero': 'dev_zero',
+                        '/dev/random': 'dev_random', '/dev/urandom': 'dev_urandom',
+                        '/proc/self': 'proc_self', '/proc/self/fd': 'proc_self_fd'}.get(link, 'other')
+        increment(summary, 'fixed_link_targets', fixed_target)
+    accessor = metadata.get('Accessor') if isinstance(metadata, dict) else None
+    increment(summary, 'metadata_accessors', accessor if accessor in ('auto', 'file', 'raw_file') else 'other')
+
+
 def error_category(error):
-    message = error.casefold() if isinstance(error, str) else ''
+    message = error.casefold().strip() if isinstance(error, str) else ''
+    for standard, symbol in sorted(posix_error_messages().items(), key=lambda item: len(item[0]), reverse=True):
+        if message == standard or message.endswith(': ' + standard):
+            return 'errno_' + symbol
+    if message.startswith('only regular files supported (not ') and message.endswith(')'):
+        return 'non_regular_file'
     for category, signatures in (
             ('directory', ('is a directory',)),
             ('missing_file', ('no such file or directory', 'file not found')),
@@ -104,6 +198,12 @@ def validate(path):
             archive, 'linux', (TRIAGE,), 'Linux')
         production_targets(context)
         unique_names = set(names)
+        metadata_by_source = {}
+        for name in names:
+            if name.startswith('results/') and name.endswith('.json') and unquote(name[len('results/'):-len('.json')]) == TRIAGE + '/All Matches Metadata':
+                for item in rows(archive, name):
+                    if isinstance(item.get('SourceFile'), str):
+                        metadata_by_source[item['SourceFile']] = item
         counts = dict.fromkeys(('result_rows', 'uac_rows', 'search_glob_rows',
                                 'metadata_rows', 'verified_uac_uploads',
                                 'verified_upload_bytes'), 0)
@@ -143,6 +243,9 @@ def validate(path):
                         'count': 0, 'stored_name_present': 0, 'archive_directories': 0,
                         'archive_bytes': 0, 'logical_bytes': 0})
                     summary['count'] += 1
+                    source_file = row.get('SourceFile')
+                    metadata = metadata_by_source.get(source_file) if isinstance(source_file, str) else None
+                    error_metadata(summary, row, metadata)
                     summary['stored_name_present'] += bool(upload.get('StoredName'))
                     logical = upload.get('Size', 0)
                     if isinstance(logical, int) and not isinstance(logical, bool) and logical > 0:
