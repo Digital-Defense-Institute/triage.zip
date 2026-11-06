@@ -88,10 +88,11 @@ classify failed targets. Do not infer a symlink from an error message alone.
 The guarded runner may inspect failed source paths with `lstat`/`stat`, store
 temporary facts inside its private collection directory, and bind those facts
 to the exact archive SHA256. Only explicitly supplied matching facts can permit
-unchanged symlinks to directories, masked systemd units pointing to `/dev/null`,
-or dangling `/etc` links as separately reported skips. Require matching positive
+symlinks to directories, `/etc` configuration or systemd unit links pointing to
+`/dev/null`, or dangling `/etc` links as separately reported skips. Require matching positive
 link size and exact errors, with no partial output. Static archive validation
-must never inspect source paths on the current host. Never upload facts files.
+must never inspect source paths on the current host. These facts establish
+post-collection state, not historical target immutability. Never upload facts files.
 
 Check all four output formats and both macOS signatures. A local macOS build
 does not prove Linux CI signing works; require the PR build to pass as well.

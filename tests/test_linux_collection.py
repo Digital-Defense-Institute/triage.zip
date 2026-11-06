@@ -341,7 +341,7 @@ class LinuxCollectionTests(unittest.TestCase):
                 validator.validate(self.path, invalid)
 
     def test_each_narrow_live_symlink_case_is_reported(self):
-        for kind, reason in (('directory', 'directory_symlink'), ('masked', 'masked_systemd_unit'),
+        for kind, reason in (('directory', 'directory_symlink'), ('masked', 'dev_null_symlink'),
                              ('dangling', 'dangling_symlink')):
             with self.subTest(kind=kind):
                 self.files = fixture()
@@ -381,7 +381,7 @@ class LinuxCollectionTests(unittest.TestCase):
             validator.validate(self.path, facts)
 
     def test_masked_unit_scope_and_target_are_strict(self):
-        for source, target in (('/etc/SECRET', 'dev_null'), ('/home/SECRET.service', 'dev_null'),
+        for source, target in (('/opt/SECRET', 'dev_null'), ('/home/SECRET.service', 'dev_null'),
                                ('/etc/systemd/system/../SECRET', 'dev_null'),
                                ('/etc/systemd/system/SECRET.service', 'other')):
             with self.subTest(source=source, target=target):
@@ -444,6 +444,36 @@ class LinuxCollectionTests(unittest.TestCase):
                                  '--live-source-facts', str(facts_path)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 1)
         self.assertNotIn('SECRET', result.stdout + result.stderr)
+
+    def test_etc_configuration_dev_null_symlinks_are_contentless_skips(self):
+        for source in ('/etc/udev/rules.d/SECRET.rules', '/etc/NetworkManager/conf.d/SECRET.conf'):
+            self.files = fixture()
+            row, facts = self.live_case('masked')
+            fact = next(iter(facts['sources'].values()))
+            row['SourceFile'] = source
+            facts['sources'] = {source: fact}
+            self.update_live_row(row, facts)
+            report = validator.validate(self.path, facts)
+            self.assertEqual(report['live_source_fact_skips']['dev_null_symlink'], 1)
+            self.assertEqual(report['verified_uac_uploads'], 1)
+            self.assertNotIn('SECRET', json.dumps(report))
+
+    def test_residual_live_fact_diagnostics_are_fixed_and_redacted(self):
+        row, facts = self.live_case('masked')
+        fact = facts['sources'][row['SourceFile']]
+        fact.update(source_type='regular_file', target_type='other', target_errno=13)
+        with self.assertRaises(validator.InvalidCollection) as error:
+            validator.validate(self.path, facts)
+        diagnostic = error.exception.diagnostics['upload_errors']['non_regular_file']
+        self.assertEqual(diagnostic['live_source_types'], {'regular_file': 1})
+        self.assertEqual(diagnostic['live_target_types'], {'other': 1})
+        self.assertEqual(diagnostic['live_source_size_matches'], {'true': 1})
+        self.assertEqual(diagnostic['live_target_errno'], {'13': 1})
+        self.assertNotIn('SECRET', json.dumps(diagnostic))
+        unsafe = {}
+        validator.live_error_metadata(unsafe, row, {row['SourceFile']: {
+            'source_type': 'SECRET', 'target_type': 'SECRET', 'source_errno': 'SECRET'}})
+        self.assertNotIn('SECRET', json.dumps(unsafe))
 
     def test_row_count_must_be_positive_and_plausible(self):
         for value in (0, 100000, '1', True):

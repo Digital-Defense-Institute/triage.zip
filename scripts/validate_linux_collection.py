@@ -286,8 +286,8 @@ def live_symlink_skip(row, archive, sources):
     if (no_stored_output and fact.get('target_type') == 'dev_null' and
             isinstance(error, str) and error.casefold().startswith('only regular files supported (not ') and
             error.endswith(')') and any(source.startswith(prefix + '/') for prefix in (
-                '/etc/systemd/system', '/usr/lib/systemd/system', '/lib/systemd/system'))):
-        return 'masked_systemd_unit'
+                '/etc', '/usr/lib/systemd/system', '/lib/systemd/system'))):
+        return 'dev_null_symlink'
     if (no_stored_output and source.startswith('/etc/') and fact.get('target_type') == 'missing' and
             fact.get('target_errno') == errno.ENOENT and
             exact_error_suffix(error, 'no such file or directory')):
@@ -295,9 +295,35 @@ def live_symlink_skip(row, archive, sources):
     return None
 
 
+def live_error_metadata(summary, row, sources):
+    source = row.get('SourceFile')
+    fact = sources.get(source) if isinstance(source, str) else None
+    increment(summary, 'live_fact_presence', 'present' if isinstance(fact, dict) else 'absent')
+    if not isinstance(fact, dict):
+        return
+    source_type = fact.get('source_type')
+    target_type = fact.get('target_type')
+    increment(summary, 'live_source_types', source_type if source_type in (
+        'symlink', 'regular_file', 'directory', 'other', 'missing') else 'unrecognized')
+    increment(summary, 'live_target_types', target_type if target_type in (
+        'directory', 'regular_file', 'dev_null', 'missing', 'other') else 'unrecognized')
+    size = fact.get('source_size')
+    row_size = row.get('FileSize')
+    if (isinstance(size, int) and not isinstance(size, bool) and
+            isinstance(row_size, int) and not isinstance(row_size, bool)):
+        increment(summary, 'live_source_size_matches', 'true' if size == row_size else 'false')
+    else:
+        increment(summary, 'live_source_size_matches', 'unavailable')
+    for key in ('source_errno', 'target_errno'):
+        code = fact.get(key)
+        value = ('absent' if code is None else str(code) if isinstance(code, int) and
+                 not isinstance(code, bool) and (code == 0 or code in errno.errorcode) else 'unrecognized')
+        increment(summary, 'live_' + key, value)
+
+
 def validate(path, live_source_facts=None):
     live_sources = validate_live_facts(path, live_source_facts)
-    live_skips = dict.fromkeys(('directory_symlink', 'masked_systemd_unit', 'dangling_symlink'), 0)
+    live_skips = dict.fromkeys(('directory_symlink', 'dev_null_symlink', 'dangling_symlink'), 0)
     with zipfile.ZipFile(path) as archive:
         context, names, log_rows, warning_rows = _shared.validate_container(
             archive, 'linux', (TRIAGE,), 'Linux')
@@ -355,6 +381,7 @@ def validate(path, live_source_facts=None):
                     source_file = row.get('SourceFile')
                     metadata = metadata_by_source.get(source_file) if isinstance(source_file, str) else None
                     error_metadata(summary, row, metadata)
+                    live_error_metadata(summary, row, live_sources)
                     summary['stored_name_present'] += bool(upload.get('StoredName'))
                     logical = upload.get('Size', 0)
                     if isinstance(logical, int) and not isinstance(logical, bool) and logical > 0:
