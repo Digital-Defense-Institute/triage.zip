@@ -5,6 +5,7 @@ crypto/proto/jobs.proto (VeloStatus), flows/proto/artifact_collector.proto.
 No collector is executed by these tests.
 """
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -438,6 +439,138 @@ class WindowsCollectionTests(unittest.TestCase):
         self.files[TRIAGE_RESULT] = ''
         self.directory_fixture(error='', stored_size=4, data=b'data')
         self.invalid('no verified nonempty')
+
+    def live_temporary_case(self, source=r'C:\Windows\Temp\SECRET.exe'):
+        row = {'SourceFile': source, 'FileSize': 42, 'Upload': {
+            'Error': 'CreateFile SECRET: The system cannot find the path specified.'}}
+        metadata = {'SourceFile': source, 'Size': 42, 'Type': 'PsList/From_Pslist'}
+        self.files[TRIAGE_RESULT] += jsonl(row)
+        self.files['results/Windows.Triage.Targets%2FAll_Matches_Metadata.json'] = jsonl(metadata)
+        self.write()
+        facts = {'collection_sha256': hashlib.sha256(self.path.read_bytes()).hexdigest(),
+                 'sources': {source: {'source_type': 'missing', 'source_winerror': 3}}}
+        return row, metadata, facts
+
+    def update_live_temporary(self, row, metadata, facts):
+        baseline = json.loads(fixture()[TRIAGE_RESULT])
+        self.files[TRIAGE_RESULT] = jsonl(baseline, row)
+        name = 'results/Windows.Triage.Targets%2FAll_Matches_Metadata.json'
+        if metadata is None:
+            self.files.pop(name, None)
+        else:
+            self.files[name] = jsonl(metadata)
+        self.write()
+        facts['collection_sha256'] = hashlib.sha256(self.path.read_bytes()).hexdigest()
+
+    def test_windows_temporary_path_scopes_are_local_and_canonical(self):
+        for source, scope in ((r'C:\Windows\Temp\SECRET.exe', 'windows_temp'),
+                              (r'D:\Users\runneradmin\AppData\Local\Temp\SECRET.dat', 'user_temp'),
+                              (r'D:\a\_temp\SECRET.exe', 'github_runner_temp')):
+            self.assertEqual(validator.windows_temp_scope(source), scope)
+        for source in (r'D:\Windows\Temp\SECRET.exe', r'C:Windows\Temp\SECRET.exe',
+                       r'\\server\share\Temp\SECRET.exe', r'\\?\C:\Windows\Temp\SECRET.exe',
+                       r'\\.\C:\Windows\Temp\SECRET.exe', r'C:\Windows\Temp\SECRET.exe:stream',
+                       r'C:\Windows\Temp\..\SECRET.exe', r'C:\Windows\Temp\.\SECRET.exe',
+                       r'C:\Windows\Temp\SECRET.exe.', r'C:\Windows\Temp\SECRET.exe ',
+                       r'C:\Windows\Temporary\SECRET.exe', r'C:\Windows\System32\SECRET.exe',
+                       r'D:\a\_tempx\SECRET.exe', r'C:\Users\x\Temp\SECRET.exe'):
+            self.assertIsNone(validator.windows_temp_scope(source), source)
+
+    def test_each_confirmed_windows_temp_scope_is_reported(self):
+        for source, scope in ((r'C:\Windows\Temp\SECRET.exe', 'windows_temp'),
+                              (r'D:\Users\runneradmin\AppData\Local\Temp\SECRET.exe', 'user_temp'),
+                              (r'D:\a\_temp\SECRET.exe', 'github_runner_temp')):
+            self.files = fixture()
+            row, metadata, facts = self.live_temporary_case(source)
+            with self.assertRaises(validator.InvalidCollection):
+                validator.validate(self.path)
+            report = validator.validate(self.path, facts)
+            self.assertEqual(report['vanished_temporary_targets'][scope], 1)
+            self.assertTrue(report['live_source_facts_used'])
+            self.assertEqual(report['verified_triage_uploads'], 1)
+            self.assertNotIn('SECRET', json.dumps(report))
+
+    def test_windows_live_facts_require_exact_collection_hash(self):
+        row, metadata, facts = self.live_temporary_case()
+        for invalid in ({}, {'sources': {}, 'collection_sha256': 'SECRET'},
+                        {'sources': {}, 'collection_sha256': '0' * 64}):
+            with self.assertRaisesRegex(validator.InvalidCollection, 'live source facts'):
+                validator.validate(self.path, invalid)
+
+    def test_windows_temp_snapshot_must_confirm_missing_with_winerror_two_or_three(self):
+        for change in ({'source_type': 'existing'}, {'source_type': 'other'},
+                       {'source_winerror': 5}, {'source_winerror': None},
+                       {'source_winerror': True}, {'source_winerror': 3.0}, {'source_size': 0}):
+            self.files = fixture()
+            row, metadata, facts = self.live_temporary_case()
+            facts['sources'][row['SourceFile']].update(change)
+            with self.assertRaises(validator.InvalidCollection):
+                validator.validate(self.path, facts)
+        self.files = fixture()
+        row, metadata, facts = self.live_temporary_case()
+        facts['sources'][row['SourceFile']]['source_winerror'] = 2
+        row['Upload']['Error'] = 'CreateFile SECRET: The system cannot find the file specified.'
+        self.update_live_temporary(row, metadata, facts)
+        self.assertTrue(validator.validate(self.path, facts)['valid'])
+
+    def test_windows_temporary_original_metadata_must_match_positive_size(self):
+        for change in (None, {'SourceFile': 'OTHER'}, {'Size': 41}, {'Size': 0}, {'Size': True}, {'Size': '42'}):
+            self.files = fixture()
+            row, metadata, facts = self.live_temporary_case()
+            metadata = None if change is None else {**metadata, **change}
+            self.update_live_temporary(row, metadata, facts)
+            with self.assertRaises(validator.InvalidCollection):
+                validator.validate(self.path, facts)
+
+    def test_windows_temp_rejects_other_errors_and_any_output(self):
+        for change in ({'Error': 'Access is denied.'}, {'Error': 'Incorrect function.'},
+                       {'Error': 'SECRET The system cannot find the path specified.'},
+                       {'StoredName': ''}, {'StoredName': '/' + EVIDENCE},
+                       {'StoredSize': 0}, {'StoredSize': 42}):
+            self.files = fixture()
+            row, metadata, facts = self.live_temporary_case()
+            row['Upload'].update(change)
+            self.update_live_temporary(row, metadata, facts)
+            with self.assertRaises(validator.InvalidCollection):
+                validator.validate(self.path, facts)
+
+    def test_windows_missing_source_outside_temp_remains_fatal(self):
+        self.files = fixture()
+        row, metadata, facts = self.live_temporary_case(r'C:\Windows\System32\SECRET.exe')
+        with self.assertRaises(validator.InvalidCollection) as failure:
+            validator.validate(self.path, facts)
+        diagnostic = failure.exception.diagnostics
+        categories = diagnostic['upload_errors']
+        self.assertEqual(next(iter(categories.values()))['windows_temp_scopes'], {'outside': 1})
+
+    def test_windows_temp_skips_do_not_satisfy_real_evidence(self):
+        row, metadata, facts = self.live_temporary_case()
+        self.files[TRIAGE_RESULT] = jsonl(row)
+        self.write()
+        facts['collection_sha256'] = hashlib.sha256(self.path.read_bytes()).hexdigest()
+        with self.assertRaisesRegex(validator.InvalidCollection, 'no verified nonempty'):
+            validator.validate(self.path, facts)
+
+    def test_windows_live_facts_cli_is_explicit_and_redacted(self):
+        row, metadata, facts = self.live_temporary_case()
+        facts_path = Path(self.temp.name) / 'facts.json'
+        facts_path.write_text(json.dumps(facts))
+        result = subprocess.run([sys.executable, str(SCRIPT), str(self.path),
+                                 '--live-source-facts', str(facts_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue(json.loads(result.stdout)['valid'])
+        self.assertNotIn('SECRET', result.stdout + result.stderr)
+        facts_path.write_text('SECRET malformed')
+        result = subprocess.run([sys.executable, str(SCRIPT), str(self.path),
+                                 '--live-source-facts', str(facts_path)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertNotIn('SECRET', result.stdout + result.stderr)
+
+    def test_windows_temp_scope_rejects_dos_devices_and_invalid_characters(self):
+        for basename in ('NUL.exe', 'CON', 'PRN.txt', 'AUX', 'COM1.exe', 'LPT9',
+                         'COM¹', 'CONIN$', 'CONOUT$', 'CLOCK$', 'bad?.exe',
+                         'bad*.exe', 'bad|name', 'bad<name', 'bad>name', 'bad"name', 'bad\nname'):
+            self.assertIsNone(validator.windows_temp_scope('C:\\Windows\\Temp\\' + basename))
 
     def test_row_count_detects_missing_result_stream(self):
         self.context(total_collected_rows=100)

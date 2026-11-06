@@ -74,8 +74,14 @@ try {
     $report.stage = 'container-validation'
     $collections = @(Get-ChildItem -LiteralPath $OutputDirectory -File -Filter 'Triage-*.zip')
     if ($collections.Count -ne 1) { throw 'Expected exactly one new Triage collection ZIP.' }
-    & python (Join-Path $PSScriptRoot 'validate_windows_collection.py') `
-        $collections[0].FullName --report $reportPath
+    $report.stage = 'source-metadata-check'
+    $factsPath = Join-Path $OutputDirectory '.live-source-facts.json'
+    & python -B (Join-Path $PSScriptRoot 'windows_source_facts.py') `
+        $collections[0].FullName --output $factsPath
+    if ($LASTEXITCODE -ne 0) { throw 'Windows source metadata checks failed.' }
+    $report.stage = 'container-validation'
+    & python -B (Join-Path $PSScriptRoot 'validate_windows_collection.py') `
+        $collections[0].FullName --report $reportPath --live-source-facts $factsPath
     $validatorExit = $LASTEXITCODE
     $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -AsHashtable
     $report.collector_sha256 = $hash

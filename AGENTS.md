@@ -98,6 +98,14 @@ existing regular-file read errors and unknown types remain fatal. Static archive
 must never inspect source paths on the current host. These facts establish
 post-collection state, not historical target immutability. Never upload facts files.
 
+Windows temporary disappearance uses the same explicit archive-bound facts model.
+`scripts/windows_source_facts.py` probes only the validator's eligible ordinary
+local temp paths on the hosted Administrator runner. Reject raw NTFS/VSS/device
+and UNC paths, DOS device aliases, traversal and ADS before any probe. A skip
+requires fresh WinError 2/3, the exact pre-write error, no stored output, and
+matching original positive-size file metadata. Never generalize this to all
+missing executable paths or waive a regular-file read/partial-write failure.
+
 Check all four output formats and both macOS signatures. A local macOS build
 does not prove Linux CI signing works; require the PR build to pass as well.
 For site edits, check download targets, OS tabs, and narrow-screen layout.

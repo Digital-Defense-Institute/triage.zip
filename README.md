@@ -22,6 +22,8 @@ For failed Linux sources, the guarded runner also records filesystem metadata on
 
 These post-collection observations establish current state, not that a link never changed during collection or that every enumerated temporary file was acquired. Facts containing source paths are deleted with the evidence. Standalone archive validation never inspects the current host and remains strict without an explicit matching facts file. Cached UAC `Details.Stat` can describe a different source, so it is not used as proof for these exceptions; the smoke test does not qualify every artifact enrichment field.
 
+Windows can likewise report vanished temporary targets only with explicit same-runner facts, the exact file/path-not-found error before any stored output, and matching original positive-size file metadata. Eligible sources are ordinary local paths under `C:\Windows\Temp`, a user's `AppData\Local\Temp`, or the hosted runner's `a\_temp`. Device/UNC paths, DOS device aliases, traversal, alternate data streams and missing files elsewhere are excluded. The helper probes only eligible temporary paths; its private facts are bound to the archive hash and deleted with the collection.
+
 ## Key Features
 
 - **Offline collection:** Pre-packaged artifacts let responders collect evidence without a Velociraptor server connection.

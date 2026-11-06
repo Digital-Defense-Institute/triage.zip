@@ -8,6 +8,8 @@ The report contains counts and fixed diagnostics only, never evidence or log tex
 import argparse
 from functools import lru_cache
 import os
+import ntpath
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -160,6 +162,32 @@ def upload_target_type(source):
     return 'other'
 
 
+def windows_temp_scope(source):
+    if not isinstance(source, str):
+        return None
+    path = source.replace('/', '\\')
+    if not re.match(r'^[A-Za-z]:\\', path) or ':' in path[2:] or '\x00' in path:
+        return None
+    if ntpath.normpath(path) != path:
+        return None
+    if any(character in path[2:] for character in '*?\"<>|') or any(ord(character) < 32 for character in path):
+        return None
+    for part in path[3:].split('\\'):
+        stem = part.split('.', 1)[0].casefold()
+        if stem in ('con', 'prn', 'aux', 'nul', 'clock$', 'conin$', 'conout$') or re.fullmatch(r'(?:com|lpt)[1-9¹²³]', stem):
+            return None
+    if any(part in ('.', '..') or part.endswith(('.', ' ')) for part in path[3:].split('\\')):
+        return None
+    folded = path.casefold()
+    if folded.startswith('c:\\windows\\temp\\') and len(path) > len('c:\\windows\\temp\\'):
+        return 'windows_temp'
+    if re.fullmatch(r'[a-z]:\\users\\[^\\]+\\appdata\\local\\temp\\.+', folded):
+        return 'user_temp'
+    if re.fullmatch(r'[a-z]:\\a\\_temp\\.+', folded):
+        return 'github_runner_temp'
+    return None
+
+
 def record_upload_error(diagnostics, upload, source=None, archive=None, row=None):
     category = upload_error_category(upload.get('Error'))
     summary = diagnostics.setdefault(category, {
@@ -172,6 +200,9 @@ def record_upload_error(diagnostics, upload, source=None, archive=None, row=None
         'archive_directories': 0, 'stored_name_trailing_slash': 0,
         'details_stat_is_dir_true': 0, 'details_stat_is_dir_false': 0})
     summary['count'] += 1
+    scope = windows_temp_scope(source) or 'outside'
+    scopes = summary.setdefault('windows_temp_scopes', {})
+    scopes[scope] = scopes.get(scope, 0) + 1
     source_type = ('null' if source is None else 'boolean' if isinstance(source, bool)
                    else 'string' if isinstance(source, str) else 'object' if isinstance(source, dict)
                    else 'array' if isinstance(source, list) else 'number' if isinstance(source, (int, float))
@@ -262,12 +293,61 @@ def is_empty_directory_read_error(upload, archive):
     return info.is_dir() and info.file_size == 0
 
 
-def validate(path):
+def validate_live_facts(path, facts):
+    if facts is None:
+        return {}
+    require(isinstance(facts, dict) and isinstance(facts.get('sources'), dict),
+            'live source facts are malformed')
+    expected = facts.get('collection_sha256')
+    require(isinstance(expected, str) and re.fullmatch(r'[a-f0-9]{64}', expected),
+            'live source facts digest is malformed')
+    digest = hashlib.sha256()
+    with open(path, 'rb') as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(chunk)
+    require(digest.hexdigest() == expected, 'live source facts do not match collection')
+    return facts['sources']
+
+
+def is_vanished_temporary_target(row, metadata, sources):
+    source = row.get('SourceFile')
+    if windows_temp_scope(source) is None:
+        return False
+    fact = sources.get(source)
+    if (not isinstance(fact, dict) or fact.get('source_type') != 'missing' or
+            type(fact.get('source_winerror')) is not int or fact['source_winerror'] not in (2, 3) or
+            'source_size' in fact):
+        return False
+    upload = row['Upload']
+    if 'StoredName' in upload or 'StoredSize' in upload:
+        return False
+    error = upload.get('Error')
+    message = normalize_system_message(error) if isinstance(error, str) else ''
+    code = native_error_category(error)
+    exact_missing = any(message == fixed or message.endswith(': ' + fixed) for fixed in (
+        'the system cannot find the file specified', 'the system cannot find the path specified'))
+    if code not in ('win32_error_2', 'win32_error_3') and not exact_missing:
+        return False
+    size = row.get('FileSize')
+    return (isinstance(metadata, dict) and metadata.get('SourceFile') == source and
+            type(size) is int and size > 0 and type(metadata.get('Size')) is int and
+            metadata['Size'] == size)
+
+
+def validate(path, live_source_facts=None):
     """Return a payload-free summary, or raise InvalidCollection."""
+    live_sources = validate_live_facts(path, live_source_facts)
+    vanished_temporary_targets = dict.fromkeys(('windows_temp', 'user_temp', 'github_runner_temp'), 0)
     with zipfile.ZipFile(path) as archive:
         context, names, log_rows, warning_rows = _shared.validate_container(
             archive, 'windows', (TRIAGE, AUTORUNS), 'Windows')
         unique_names = set(names)
+        metadata_by_source = {}
+        for name in names:
+            if name.startswith('results/') and name.endswith('.json') and unquote(name[len('results/'):-len('.json')]) == TRIAGE + '/All_Matches_Metadata':
+                for item in rows(archive, name):
+                    if isinstance(item.get('SourceFile'), str):
+                        metadata_by_source[item['SourceFile']] = item
 
         triage_rows = autoruns_rows = result_rows = successful_uploads = 0
         upload_errors = {}
@@ -301,6 +381,11 @@ def validate(path):
                     if errored and is_empty_directory_read_error(upload, archive):
                         skipped_directory_uploads += 1
                         record_upload_error(skipped_directory_errors, upload, row.get('SourceFile'), archive, row)
+                        continue
+                    source_file = row.get('SourceFile')
+                    metadata = metadata_by_source.get(source_file) if isinstance(source_file, str) else None
+                    if errored and is_vanished_temporary_target(row, metadata, live_sources):
+                        vanished_temporary_targets[windows_temp_scope(source_file)] += 1
                         continue
                     if errored:
                         record_upload_error(upload_errors, upload, row.get('SourceFile'), archive, row)
@@ -352,7 +437,9 @@ def validate(path):
             'triage_rows': triage_rows, 'autoruns_entries': autoruns_rows,
             'verified_triage_uploads': successful_uploads,
             'skipped_directory_uploads': skipped_directory_uploads,
-            'skipped_directory_diagnostics': skipped_directory_errors}
+            'skipped_directory_diagnostics': skipped_directory_errors,
+            'live_source_facts_used': live_source_facts is not None,
+            'vanished_temporary_targets': vanished_temporary_targets}
         if upload_errors or any(reference_errors.values()) or any(sizes[key] for key in (
                 'malformed_stored_size', 'expected_smaller_than_actual',
                 'expected_larger_than_actual')):
@@ -379,11 +466,36 @@ def validate(path):
                 'verified_triage_uploads': successful_uploads,
                 'log_rows': log_rows, 'warning_rows': warning_rows,
                 'skipped_directory_uploads': skipped_directory_uploads,
-                'skipped_directory_diagnostics': skipped_directory_errors}
+                'skipped_directory_diagnostics': skipped_directory_errors,
+            'live_source_facts_used': live_source_facts is not None,
+            'vanished_temporary_targets': vanished_temporary_targets}
 
 
 def main():
-    return _shared.run_cli(validate, __doc__)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('collection', type=Path)
+    parser.add_argument('--report', type=Path)
+    parser.add_argument('--live-source-facts', type=Path)
+    args = parser.parse_args()
+    try:
+        facts = None
+        if args.live_source_facts:
+            try:
+                facts = json.loads(args.live_source_facts.read_text(encoding='utf-8'))
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                raise InvalidCollection('cannot read live source facts') from None
+            require(isinstance(facts, dict), 'live source facts are malformed')
+        report = validate(args.collection, facts)
+    except (InvalidCollection, OSError, zipfile.BadZipFile, RuntimeError, EOFError) as error:
+        diagnostic = str(error) if isinstance(error, InvalidCollection) else 'cannot read valid collection ZIP'
+        report = {'valid': False, 'error': diagnostic}
+        if isinstance(error, InvalidCollection) and error.diagnostics:
+            report['diagnostics'] = error.diagnostics
+    if args.report:
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        args.report.write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+    print(json.dumps(report, sort_keys=True))
+    return 0 if report['valid'] else 1
 
 
 if __name__ == '__main__':
