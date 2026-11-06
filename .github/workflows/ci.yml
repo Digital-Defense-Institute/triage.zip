@@ -202,6 +202,19 @@ jobs:
           LINUX_TRIAGE_TARGETS_CHANGED: ${{ env.LINUX_TRIAGE_TARGETS_CHANGED }}
         run: bash build_collector.sh
 
+      - name: Validate MOTW fixture collection
+        if: steps.policy.outputs.build == 'true'
+        env:
+          VELOCIRAPTOR_BINARY: ./velociraptor
+          VELOCIRAPTOR_NTFS_FIXTURE: ${{ runner.temp }}/test.ntfs.dd
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location --retry 3 \
+            https://raw.githubusercontent.com/Velocidex/velociraptor/v0.77.3/artifacts/testdata/files/test.ntfs.dd \
+            --output "$VELOCIRAPTOR_NTFS_FIXTURE"
+          echo "4efccac3f92a14da89ae9bca7231644ba25c65c09772c1f06b4e490e691f28ca  $VELOCIRAPTOR_NTFS_FIXTURE" | sha256sum -c -
+          python3 -B -m unittest discover -s tests -p test_motw_collection.py -v
+
       - name: Delete existing latest release
         if: steps.policy.outputs.publish == 'true'
         run: |

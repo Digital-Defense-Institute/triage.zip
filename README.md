@@ -15,7 +15,7 @@ The build downloads the upstream Velociraptor binaries and triage artifact bundl
 ## Key Features
 
 - **Offline collection:** Pre-packaged artifacts let responders collect evidence without a Velociraptor server connection.
-- **Windows triage:** KAPE and SANS triage targets, basic collection, live system data, and Sysinternals Autoruns, including Volume Shadow Copies up to three days old.
+- **Windows triage:** KAPE and SANS triage targets, basic collection, live system data, and Sysinternals Autoruns, including Volume Shadow Copies up to three days old. Parsed SRUM, BAM, UserAssist, AppCompatCache, and Amcache supplement the raw evidence.
 - **Linux and macOS triage:** `Linux.Triage.UAC` collects the applicable Unix-like Artifacts Collector targets for each platform.
 - **ZIP output:** Each collector writes an evidence archive for later analysis.
 
@@ -66,6 +66,47 @@ Fork this repository and adjust the configuration for the target platform:
 [build_collector.sh](build_collector.sh) builds all four collectors on Linux and is the script used by CI. [build_collector_macos.sh](build_collector_macos.sh) provides a macOS build path. Both use shared helpers in [lib/collector_common.sh](lib/collector_common.sh).
 
 CI builds PR and `main` changes even when the upstream version and artifact ETags are unchanged, so configuration and build-script changes are exercised. See [Automated Builds](#automated-builds) for the schedule and release behavior.
+
+## Parsed Windows evidence
+
+The Windows spec enables the built-in `Windows.Forensics.SRUM`,
+`Windows.Forensics.Bam`, `Windows.Registry.UserAssist`,
+`Windows.Registry.AppCompatCache`, and `Windows.Forensics.Amcache` artifacts.
+Their JSONL results supplement the raw files acquired by `Windows.Triage.Targets`.
+Parsed Prefetch is already provided by `_Live`, under
+`Windows.Triage.Targets/PrefetchBinaries_Executables`; downstream tools must read
+that result source rather than assuming a separate Prefetch artifact was run.
+
+Parser output depends on the available evidence and Windows version. Inspect
+collection logs and retain raw files for independent parsing when needed. SRUM
+network byte counts do not establish the volume of stolen data, and BAM's
+recorded last execution is not a process termination time.
+
+## Mark-of-the-Web preservation
+
+The Windows spec uses the built-in `Generic.Collectors.File` artifact to collect
+raw `Zone.Identifier` alternate data streams under `C:\Users`, to a maximum
+recursion depth of 20 directories below each profile. The NTFS accessor reads
+the streams directly; the parent files are not uploaded or hashed by this pass.
+Streams reported larger than 64 KiB during enumeration are skipped. This is a
+per-stream selection limit, not an aggregate archive limit or a guarantee against
+files changing during collection.
+
+Look for stream paths ending in `:Zone.Identifier` in
+`Generic.Collectors.File/All Matches Metadata` and
+`Generic.Collectors.File/Uploads`. The uploaded bytes retain fields such as
+`ZoneId`, `HostUrl`, and `ReferrerUrl` when present; this pass does not parse
+them into separate columns. All zones are preserved. A missing stream does not
+establish that a file was created locally, since download and extraction tools
+do not always create or preserve MOTW.
+
+CI tests this configuration against a disposable copy of upstream's NTFS fixture,
+including exact bytes, metadata, size boundaries, unrelated streams, and paths
+outside user profiles. This does not substitute for Windows endpoint validation.
+
+The remaining staging-file and collection-exclusion work is tracked in
+[the issue 20 upstream follow-up](docs/issue20-upstream.md). It requires upstream
+features before those policies can be enabled in the published collector.
 
 ## Further Information
 
