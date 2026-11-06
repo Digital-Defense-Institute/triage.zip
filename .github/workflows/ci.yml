@@ -1,7 +1,7 @@
 name: CI
 
 permissions:
-  contents: write
+  contents: read
 
 on:
   push:
@@ -17,6 +17,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.policy.outputs.build }}
+      publish: ${{ steps.policy.outputs.publish }}
+      artifact_id: ${{ steps.package.outputs.artifact-id }}
 
     steps:
       - name: Checkout code
@@ -24,6 +28,7 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up JQ
         run: sudo apt-get update && sudo apt-get install -y jq
@@ -215,38 +220,239 @@ jobs:
           echo "4efccac3f92a14da89ae9bca7231644ba25c65c09772c1f06b4e490e691f28ca  $VELOCIRAPTOR_NTFS_FIXTURE" | sha256sum -c -
           python3 -B -m unittest discover -s tests -p test_motw_collection.py -v
 
+      # Stage only public release payloads; datastore also contains private keys.
+      - name: Stage release payloads
+        if: steps.policy.outputs.build == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p release-inputs/data
+          cp datastore/Velociraptor_Triage_Collector.exe \
+            datastore/Velociraptor_Triage_Collector_Linux \
+            datastore/Velociraptor_Triage_Collector_macOS \
+            datastore/Velociraptor_Triage_Collector_macOS_ARM release-inputs/
+          cp data/velociraptor-version.json release-inputs/data/
+          cd release-inputs
+          sha256sum Velociraptor_Triage_Collector.exe \
+            Velociraptor_Triage_Collector_Linux \
+            Velociraptor_Triage_Collector_macOS \
+            Velociraptor_Triage_Collector_macOS_ARM \
+            data/velociraptor-version.json > SHA256SUMS
+
+      - name: Upload release payloads
+        if: steps.policy.outputs.build == 'true'
+        id: package
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-inputs
+          path: release-inputs/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  windows_validate:
+    needs: build
+    if: needs.build.outputs.build == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 55
+    outputs:
+      collector_sha256: ${{ steps.validate.outputs.collector_sha256 }}
+    steps:
+      - name: Checkout validation scripts
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test Windows validation helpers
+        run: python -B -m unittest discover -s tests -p 'test_windows*.py' -v
+
+      - name: Download exact build payloads
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: release-inputs
+          merge-multiple: true
+
+      - name: Run and validate Windows collection
+        id: validate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($line in Get-Content release-inputs/SHA256SUMS) {
+            if ($line -notmatch '^([a-f0-9]{64})  (.+)$') {
+              throw 'Invalid build checksum manifest'
+            }
+            $expected = $Matches[1]
+            $path = Join-Path 'release-inputs' $Matches[2]
+            if ((Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant() -ne $expected) {
+              throw 'Build payload checksum mismatch'
+            }
+          }
+          $collector = (Resolve-Path release-inputs/Velociraptor_Triage_Collector.exe).Path
+          $before = (Get-FileHash -Algorithm SHA256 -LiteralPath $collector).Hash.ToLowerInvariant()
+          ./scripts/run_windows_collection.ps1 -Collector $collector `
+            -OutputDirectory "$env:RUNNER_TEMP/windows-collection" `
+            -ReportDirectory "$env:GITHUB_WORKSPACE/windows-validation" -TimeoutSeconds 2700
+          if ($LASTEXITCODE -ne 0) { throw 'Windows collection validation failed' }
+          $report = Get-Content windows-validation/validation-report.json -Raw | ConvertFrom-Json
+          if ($report.valid -ne $true -or $report.collector_sha256 -ne $before) {
+            throw 'Windows validation report does not match the tested collector'
+          }
+          $after = (Get-FileHash -Algorithm SHA256 -LiteralPath $collector).Hash.ToLowerInvariant()
+          if ($before -ne $after) { throw 'Collector changed during validation' }
+          "collector_sha256=$after" >> $env:GITHUB_OUTPUT
+
+      # Collection ZIPs and raw logs may include runner evidence. Publish only
+      # the validator's redacted counts/status report, including on failure.
+      - name: Upload Windows validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-validation
+          path: windows-validation/validation-report.json
+          if-no-files-found: warn
+          retention-days: 3
+
+  linux_validate:
+    needs: build
+    if: needs.build.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    outputs:
+      collector_sha256: ${{ steps.validate.outputs.collector_sha256 }}
+    steps:
+      - name: Checkout validation scripts
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test Linux validation helpers
+        run: python -B -m unittest discover -s tests -p 'test_linux*.py' -v
+
+      - name: Download exact build payloads
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: release-inputs
+          merge-multiple: true
+
+      - name: Run and validate Linux collection
+        id: validate
+        run: |
+          set -euo pipefail
+          (cd release-inputs && sha256sum --check --strict SHA256SUMS)
+          COLLECTOR=$(realpath release-inputs/Velociraptor_Triage_Collector_Linux)
+          BEFORE=$(sha256sum "$COLLECTOR")
+          BEFORE=${BEFORE%% *}
+          chmod +x "$COLLECTOR"
+          # Keep setup-python's interpreter when sudo applies its secure PATH.
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT "$(command -v python)" \
+            scripts/run_linux_collection.py --collector "$COLLECTOR" \
+            --output-directory "$RUNNER_TEMP/linux-collection" \
+            --report-directory "$GITHUB_WORKSPACE/linux-validation" --timeout-seconds 2700
+          python - "$BEFORE" <<'PYTHON'
+          import json
+          import sys
+          from pathlib import Path
+          report = json.loads(Path('linux-validation/validation-report.json').read_text())
+          if report.get('valid') is not True or report.get('collector_sha256') != sys.argv[1]:
+              raise SystemExit('Linux validation report does not match the tested collector')
+          PYTHON
+          AFTER=$(sha256sum "$COLLECTOR")
+          AFTER=${AFTER%% *}
+          test "$BEFORE" = "$AFTER"
+          echo "collector_sha256=$AFTER" >> "$GITHUB_OUTPUT"
+
+      # Never upload the collection ZIP, UAC output, or evidence-bearing logs.
+      - name: Upload Linux validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-validation
+          path: linux-validation/validation-report.json
+          if-no-files-found: warn
+          retention-days: 3
+
+  publish:
+    needs: [build, windows_validate, linux_validate]
+    if: needs.build.outputs.publish == 'true' && needs.windows_validate.result == 'success' && needs.linux_validate.result == 'success'
+    # Serialize latest-release replacement; never cancel an active publication.
+    concurrency:
+      group: triage-latest-publication
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout tested source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Download exact build payloads
+        uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ needs.build.outputs.artifact_id }}
+          path: release-inputs
+          merge-multiple: true
+
+      - name: Verify tested payloads and publication source
+        env:
+          VALIDATED_WINDOWS_SHA256: ${{ needs.windows_validate.outputs.collector_sha256 }}
+          VALIDATED_LINUX_SHA256: ${{ needs.linux_validate.outputs.collector_sha256 }}
+        run: |
+          set -euo pipefail
+          (cd release-inputs && sha256sum --check --strict SHA256SUMS)
+          WINDOWS_SHA256=$(sha256sum release-inputs/Velociraptor_Triage_Collector.exe)
+          test "${WINDOWS_SHA256%% *}" = "$VALIDATED_WINDOWS_SHA256"
+          LINUX_SHA256=$(sha256sum release-inputs/Velociraptor_Triage_Collector_Linux)
+          test "${LINUX_SHA256%% *}" = "$VALIDATED_LINUX_SHA256"
+          # Do not publish stale source or commit metadata over a newer main.
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          git switch -C main "$GITHUB_SHA"
+          cp release-inputs/data/velociraptor-version.json data/velociraptor-version.json
+
       - name: Delete existing latest release
-        if: steps.policy.outputs.publish == 'true'
         run: |
           gh release delete latest --yes || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Delete old latest tag
-        if: steps.policy.outputs.publish == 'true'
         run: |
           git tag -d latest || true
           git push --delete origin latest || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-
       - name: Create Latest Release
-        if: steps.policy.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+          VERSION=$(jq -er '.velociraptor_version' data/velociraptor-version.json)
           gh release create latest \
-            ./datastore/Velociraptor_Triage_Collector.exe \
-            ./datastore/Velociraptor_Triage_Collector_Linux \
-            ./datastore/Velociraptor_Triage_Collector_macOS \
-            ./datastore/Velociraptor_Triage_Collector_macOS_ARM \
+            ./release-inputs/Velociraptor_Triage_Collector.exe \
+            ./release-inputs/Velociraptor_Triage_Collector_Linux \
+            ./release-inputs/Velociraptor_Triage_Collector_macOS \
+            ./release-inputs/Velociraptor_Triage_Collector_macOS_ARM \
+            --target "$GITHUB_SHA" \
             --title "Latest Release" \
-            --notes "Built with Velociraptor ${{ env.UPSTREAM_VELO_VERSION }}" \
+            --notes "Built with Velociraptor $VERSION; Windows and Linux collection validation passed." \
             --latest
 
       - name: Commit version metadata
-        if: steps.policy.outputs.publish == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -257,5 +463,5 @@ jobs:
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add data/velociraptor-version.json
             git commit -m "chore: update version metadata [skip ci]"
-            git push
+            git push origin HEAD:refs/heads/main
           fi
