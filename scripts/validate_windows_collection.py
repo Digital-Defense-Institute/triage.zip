@@ -24,6 +24,9 @@ from importlib.util import module_from_spec, spec_from_file_location
 _shared_spec = spec_from_file_location('collection_validation', Path(__file__).with_name('collection_validation.py'))
 _shared = module_from_spec(_shared_spec)
 _shared_spec.loader.exec_module(_shared)
+_evidence_spec = spec_from_file_location('windows_evidence_validation', Path(__file__).with_name('windows_evidence_validation.py'))
+_evidence = module_from_spec(_evidence_spec)
+_evidence_spec.loader.exec_module(_evidence)
 InvalidCollection = _shared.InvalidCollection
 require = _shared.require
 object_json = _shared.object_json
@@ -334,7 +337,7 @@ def is_vanished_temporary_target(row, metadata, sources):
             metadata['Size'] == size)
 
 
-def validate(path, live_source_facts=None):
+def validate(path, live_source_facts=None, windows_evidence=False, seed_manifest=None):
     """Return a payload-free summary, or raise InvalidCollection."""
     live_sources = validate_live_facts(path, live_source_facts)
     vanished_temporary_targets = dict.fromkeys(('windows_temp', 'user_temp', 'github_runner_temp'), 0)
@@ -461,7 +464,9 @@ def validate(path, live_source_facts=None):
         total = context.get('total_collected_rows')
         require(isinstance(total, int) and not isinstance(total, bool) and
                 0 < total <= result_rows, 'collection row count is invalid')
-        return {'valid': True, 'result_rows': result_rows,
+        feature_report = (_evidence.validate(archive, context, names, rows, require, seed_manifest)
+                          if windows_evidence else {})
+        return {'valid': True, **feature_report, 'result_rows': result_rows,
                 'triage_rows': triage_rows, 'autoruns_entries': autoruns_rows,
                 'verified_triage_uploads': successful_uploads,
                 'log_rows': log_rows, 'warning_rows': warning_rows,
@@ -476,6 +481,9 @@ def main():
     parser.add_argument('collection', type=Path)
     parser.add_argument('--report', type=Path)
     parser.add_argument('--live-source-facts', type=Path)
+    parser.add_argument('--windows-evidence', action='store_true',
+                        help='Qualify the five parsers and MOTW on the Windows CI image')
+    parser.add_argument('--motw-seeds', type=Path)
     args = parser.parse_args()
     try:
         facts = None
@@ -485,7 +493,14 @@ def main():
             except (OSError, UnicodeError, json.JSONDecodeError):
                 raise InvalidCollection('cannot read live source facts') from None
             require(isinstance(facts, dict), 'live source facts are malformed')
-        report = validate(args.collection, facts)
+        seeds = None
+        if args.motw_seeds:
+            require(args.windows_evidence, 'MOTW seeds require Windows evidence validation')
+            try:
+                seeds = json.loads(args.motw_seeds.read_text(encoding='utf-8-sig'))
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                raise InvalidCollection('cannot read MOTW seed manifest') from None
+        report = validate(args.collection, facts, args.windows_evidence, seeds)
     except (InvalidCollection, OSError, zipfile.BadZipFile, RuntimeError, EOFError) as error:
         diagnostic = str(error) if isinstance(error, InvalidCollection) else 'cannot read valid collection ZIP'
         report = {'valid': False, 'error': diagnostic}

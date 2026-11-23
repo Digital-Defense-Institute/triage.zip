@@ -1,0 +1,442 @@
+{
+  "paired": {
+    "runner_image_version": "20261101.353.1",
+    "logical_processors": 4,
+    "commit": "b5f8fadbb7891ce087c0eb34c76de7c39912c199",
+    "methodology": "Three paired runs on one hosted VM; order baseline/parsers, parsers/baseline, baseline/parsers. Process wall time excludes ZIP validation and cleanup.",
+    "runner_image": "win22",
+    "validator_revision": "eebda5037e7c91f8408cc10470da404ab44e3a64",
+    "valid": true,
+    "runs": [
+      {
+        "result_rows": 5259,
+        "verified_triage_uploads": 758,
+        "parser_rows": {
+          "Windows.Forensics.SRUM": 0,
+          "Windows.Forensics.Bam": 0,
+          "Windows.Registry.UserAssist": 0,
+          "Windows.Registry.AppCompatCache": 0,
+          "Windows.Forensics.Amcache": 0
+        },
+        "validation_and_cleanup_seconds": 11.155515199999996,
+        "pair": 1,
+        "parser_result_bytes": {
+          "Windows.Forensics.SRUM": 0,
+          "Windows.Forensics.Bam": 0,
+          "Windows.Registry.UserAssist": 0,
+          "Windows.Registry.AppCompatCache": 0,
+          "Windows.Forensics.Amcache": 0
+        },
+        "variant": "baseline",
+        "valid": true,
+        "collector_sha256": "c036238ac1431a54cd3f285c708caba51d633b06990f5797e157aad82d3cbd50",
+        "zip_bytes": 458535284,
+        "execution_seconds": 105.5256141
+      },
+      {
+        "result_rows": 12429,
+        "verified_triage_uploads": 759,
+        "parser_rows": {
+          "Windows.Forensics.SRUM": 857,
+          "Windows.Forensics.Bam": 12,
+          "Windows.Registry.UserAssist": 4,
+          "Windows.Registry.AppCompatCache": 662,
+          "Windows.Forensics.Amcache": 5648
+        },
+        "validation_and_cleanup_seconds": 11.311142799999999,
+        "pair": 1,
+        "parser_result_bytes": {
+          "Windows.Forensics.SRUM": 527178,
+          "Windows.Forensics.Bam": 2159,
+          "Windows.Registry.UserAssist": 625,
+          "Windows.Registry.AppCompatCache": 103259,
+          "Windows.Forensics.Amcache": 2106355
+        },
+        "variant": "parsers",
+        "valid": true,
+        "collector_sha256": "e7e4664f80d25a59d0bda23e02c94c0afc213b95e2f6f4060f3706cc34149e61",
+        "zip_bytes": 459083525,
+        "execution_seconds": 53.0796696
+      },
+      {
+        "result_rows": 12430,
+        "verified_triage_uploads": 759,
+        "parser_rows": {
+          "Windows.Forensics.SRUM": 857,
+          "Windows.Forensics.Bam": 13,
+          "Windows.Registry.UserAssist": 4,
+          "Windows.Registry.AppCompatCache": 662,
+          "Windows.Forensics.Amcache": 5648
+        },
+        "validation_and_cleanup_seconds": 11.470330399999995,
+        "pair": 2,
+        "parser_result_bytes": {
+          "Windows.Forensics.SRUM": 527178,
+          "Windows.Forensics.Bam": 2388,
+          "Windows.Registry.UserAssist": 625,
+          "Windows.Registry.AppCompatCache": 103259,
+          "Windows.Forensics.Amcache": 2106355
+        },
+        "variant": "parsers",
+        "valid": true,
+        "collector_sha256": "e7e4664f80d25a59d0bda23e02c94c0afc213b95e2f6f4060f3706cc34149e61",
+        "zip_bytes": 459190877,
+        "execution_seconds": 52.5713882
+      },
+      {
+        "result_rows": 5244,
+        "verified_triage_uploads": 759,
+        "parser_rows": {
+          "Windows.Forensics.SRUM": 0,
+          "Windows.Forensics.Bam": 0,
+          "Windows.Registry.UserAssist": 0,
+          "Windows.Registry.AppCompatCache": 0,
+          "Windows.Forensics.Amcache": 0
+        },
+        "validation_and_cleanup_seconds": 11.236895999999994,
+        "pair": 2,
+        "parser_result_bytes": {
+          "Windows.Forensics.SRUM": 0,
+          "Windows.Forensics.Bam": 0,
+          "Windows.Registry.UserAssist": 0,
+          "Windows.Registry.AppCompatCache": 0,
+          "Windows.Forensics.Amcache": 0
+        },
+        "variant": "baseline",
+        "valid": true,
+        "collector_sha256": "c036238ac1431a54cd3f285c708caba51d633b06990f5797e157aad82d3cbd50",
+        "zip_bytes": 458974344,
+        "execution_seconds": 50.3340881
+      },
+      {
+        "result_rows": 5244,
+        "verified_triage_uploads": 759,
+        "parser_rows": {
+          "Windows.Forensics.SRUM": 0,
+          "Windows.Forensics.Bam": 0,
+          "Windows.Registry.UserAssist": 0,
+          "Windows.Registry.AppCompatCache": 0,
+          "Windows.Forensics.Amcache": 0
+        },
+        "validation_and_cleanup_seconds": 11.324737900000002,
+        "pair": 3,
+        "parser_result_bytes": {
+          "Windows.Forensics.SRUM": 0,
+          "Windows.Forensics.Bam": 0,
+          "Windows.Registry.UserAssist": 0,
+          "Windows.Registry.AppCompatCache": 0,
+          "Windows.Forensics.Amcache": 0
+        },
+        "variant": "baseline",
+        "valid": true,
+        "collector_sha256": "c036238ac1431a54cd3f285c708caba51d633b06990f5797e157aad82d3cbd50",
+        "zip_bytes": 459050485,
+        "execution_seconds": 52.1034656
+      },
+      {
+        "result_rows": 12436,
+        "verified_triage_uploads": 759,
+        "parser_rows": {
+          "Windows.Forensics.SRUM": 857,
+          "Windows.Forensics.Bam": 16,
+          "Windows.Registry.UserAssist": 9,
+          "Windows.Registry.AppCompatCache": 662,
+          "Windows.Forensics.Amcache": 5648
+        },
+        "validation_and_cleanup_seconds": 11.252185599999997,
+        "pair": 3,
+        "parser_result_bytes": {
+          "Windows.Forensics.SRUM": 527178,
+          "Windows.Forensics.Bam": 3077,
+          "Windows.Registry.UserAssist": 1403,
+          "Windows.Registry.AppCompatCache": 103259,
+          "Windows.Forensics.Amcache": 2106355
+        },
+        "variant": "parsers",
+        "valid": true,
+        "collector_sha256": "e7e4664f80d25a59d0bda23e02c94c0afc213b95e2f6f4060f3706cc34149e61",
+        "zip_bytes": 459471345,
+        "execution_seconds": 52.8968485
+      }
+    ],
+    "run_id": "42249025144",
+    "inputs": {
+      "velociraptor_version": "0.77.3",
+      "triage_targets_sha256": "71e36f9cc06ae3bab0414988189e856ddd89c258501e006ac9d8f1bd01621492",
+      "linux_triage_targets_sha256": "fc44566b6d553670421a1a58ffe57686f88c7d4b479734d88ac8ae438fcb4cc3",
+      "last_build_timestamp": "2026-11-06T16:05:23Z"
+    }
+  },
+  "fresh": [
+    {
+      "valid": true,
+      "repeat": "1",
+      "mode": "baseline",
+      "validator_revision": "eebda5037e7c91f8408cc10470da404ab44e3a64",
+      "runs": [
+        {
+          "zip_bytes": 463965306,
+          "pair": 1,
+          "execution_seconds": 104.4502308,
+          "collector_sha256": "c036238ac1431a54cd3f285c708caba51d633b06990f5797e157aad82d3cbd50",
+          "verified_triage_uploads": 767,
+          "validation_and_cleanup_seconds": 7.889228299999999,
+          "result_rows": 5312,
+          "parser_rows": {
+            "Windows.Forensics.SRUM": 0,
+            "Windows.Forensics.Bam": 0,
+            "Windows.Registry.UserAssist": 0,
+            "Windows.Registry.AppCompatCache": 0,
+            "Windows.Forensics.Amcache": 0
+          },
+          "valid": true,
+          "parser_result_bytes": {
+            "Windows.Forensics.SRUM": 0,
+            "Windows.Forensics.Bam": 0,
+            "Windows.Registry.UserAssist": 0,
+            "Windows.Registry.AppCompatCache": 0,
+            "Windows.Forensics.Amcache": 0
+          },
+          "variant": "baseline"
+        }
+      ],
+      "methodology": "One first collection on a fresh hosted runner; process wall time excludes ZIP validation and cleanup.",
+      "inputs": {
+        "velociraptor_version": "0.77.3",
+        "triage_targets_sha256": "71e36f9cc06ae3bab0414988189e856ddd89c258501e006ac9d8f1bd01621492",
+        "linux_triage_targets_sha256": "fc44566b6d553670421a1a58ffe57686f88c7d4b479734d88ac8ae438fcb4cc3",
+        "last_build_timestamp": "2026-11-06T16:18:11Z"
+      },
+      "runner_image_version": "20261101.353.1",
+      "runner_image": "win22",
+      "commit": "c5ef6a8397a316e0dcdf5a0cbce1bfcbf5a6d482",
+      "run_id": "42251038897",
+      "logical_processors": 4
+    },
+    {
+      "methodology": "One first collection on a fresh hosted runner; process wall time excludes ZIP validation and cleanup.",
+      "logical_processors": 4,
+      "inputs": {
+        "velociraptor_version": "0.77.3",
+        "triage_targets_sha256": "71e36f9cc06ae3bab0414988189e856ddd89c258501e006ac9d8f1bd01621492",
+        "linux_triage_targets_sha256": "fc44566b6d553670421a1a58ffe57686f88c7d4b479734d88ac8ae438fcb4cc3",
+        "last_build_timestamp": "2026-11-06T16:18:11Z"
+      },
+      "runner_image": "win22",
+      "run_id": "42251038897",
+      "mode": "baseline",
+      "runner_image_version": "20261101.353.1",
+      "commit": "c5ef6a8397a316e0dcdf5a0cbce1bfcbf5a6d482",
+      "repeat": "2",
+      "runs": [
+        {
+          "parser_result_bytes": {
+            "Windows.Forensics.SRUM": 0,
+            "Windows.Forensics.Bam": 0,
+            "Windows.Registry.UserAssist": 0,
+            "Windows.Registry.AppCompatCache": 0,
+            "Windows.Forensics.Amcache": 0
+          },
+          "variant": "baseline",
+          "validation_and_cleanup_seconds": 7.9669568000000055,
+          "zip_bytes": 460739232,
+          "execution_seconds": 90.091543,
+          "verified_triage_uploads": 763,
+          "collector_sha256": "c036238ac1431a54cd3f285c708caba51d633b06990f5797e157aad82d3cbd50",
+          "parser_rows": {
+            "Windows.Forensics.SRUM": 0,
+            "Windows.Forensics.Bam": 0,
+            "Windows.Registry.UserAssist": 0,
+            "Windows.Registry.AppCompatCache": 0,
+            "Windows.Forensics.Amcache": 0
+          },
+          "valid": true,
+          "result_rows": 5292,
+          "pair": 1
+        }
+      ],
+      "validator_revision": "eebda5037e7c91f8408cc10470da404ab44e3a64",
+      "valid": true
+    },
+    {
+      "logical_processors": 4,
+      "repeat": "3",
+      "validator_revision": "eebda5037e7c91f8408cc10470da404ab44e3a64",
+      "runner_image_version": "20261101.353.1",
+      "valid": true,
+      "runs": [
+        {
+          "valid": true,
+          "collector_sha256": "c036238ac1431a54cd3f285c708caba51d633b06990f5797e157aad82d3cbd50",
+          "variant": "baseline",
+          "pair": 1,
+          "verified_triage_uploads": 762,
+          "parser_rows": {
+            "Windows.Forensics.SRUM": 0,
+            "Windows.Forensics.Bam": 0,
+            "Windows.Registry.UserAssist": 0,
+            "Windows.Registry.AppCompatCache": 0,
+            "Windows.Forensics.Amcache": 0
+          },
+          "result_rows": 5279,
+          "zip_bytes": 460723908,
+          "parser_result_bytes": {
+            "Windows.Forensics.SRUM": 0,
+            "Windows.Forensics.Bam": 0,
+            "Windows.Registry.UserAssist": 0,
+            "Windows.Registry.AppCompatCache": 0,
+            "Windows.Forensics.Amcache": 0
+          },
+          "validation_and_cleanup_seconds": 7.902877199999992,
+          "execution_seconds": 122.532327
+        }
+      ],
+      "methodology": "One first collection on a fresh hosted runner; process wall time excludes ZIP validation and cleanup.",
+      "commit": "c5ef6a8397a316e0dcdf5a0cbce1bfcbf5a6d482",
+      "run_id": "42251038897",
+      "inputs": {
+        "velociraptor_version": "0.77.3",
+        "triage_targets_sha256": "71e36f9cc06ae3bab0414988189e856ddd89c258501e006ac9d8f1bd01621492",
+        "linux_triage_targets_sha256": "fc44566b6d553670421a1a58ffe57686f88c7d4b479734d88ac8ae438fcb4cc3",
+        "last_build_timestamp": "2026-11-06T16:18:11Z"
+      },
+      "mode": "baseline",
+      "runner_image": "win22"
+    },
+    {
+      "valid": true,
+      "mode": "parsers",
+      "methodology": "One first collection on a fresh hosted runner; process wall time excludes ZIP validation and cleanup.",
+      "logical_processors": 4,
+      "validator_revision": "eebda5037e7c91f8408cc10470da404ab44e3a64",
+      "commit": "c5ef6a8397a316e0dcdf5a0cbce1bfcbf5a6d482",
+      "runner_image": "win22",
+      "inputs": {
+        "velociraptor_version": "0.77.3",
+        "triage_targets_sha256": "71e36f9cc06ae3bab0414988189e856ddd89c258501e006ac9d8f1bd01621492",
+        "linux_triage_targets_sha256": "fc44566b6d553670421a1a58ffe57686f88c7d4b479734d88ac8ae438fcb4cc3",
+        "last_build_timestamp": "2026-11-06T16:18:11Z"
+      },
+      "runs": [
+        {
+          "zip_bytes": 462244177,
+          "valid": true,
+          "parser_rows": {
+            "Windows.Forensics.SRUM": 857,
+            "Windows.Forensics.Bam": 11,
+            "Windows.Registry.UserAssist": 4,
+            "Windows.Registry.AppCompatCache": 662,
+            "Windows.Forensics.Amcache": 5648
+          },
+          "collector_sha256": "e7e4664f80d25a59d0bda23e02c94c0afc213b95e2f6f4060f3706cc34149e61",
+          "result_rows": 12484,
+          "pair": 1,
+          "validation_and_cleanup_seconds": 11.827634099999997,
+          "parser_result_bytes": {
+            "Windows.Forensics.SRUM": 527178,
+            "Windows.Forensics.Bam": 1929,
+            "Windows.Registry.UserAssist": 625,
+            "Windows.Registry.AppCompatCache": 103259,
+            "Windows.Forensics.Amcache": 2106355
+          },
+          "execution_seconds": 110.7862169,
+          "verified_triage_uploads": 759,
+          "variant": "parsers"
+        }
+      ],
+      "run_id": "42251038897",
+      "repeat": "1",
+      "runner_image_version": "20261101.353.1"
+    },
+    {
+      "run_id": "42251038897",
+      "mode": "parsers",
+      "commit": "c5ef6a8397a316e0dcdf5a0cbce1bfcbf5a6d482",
+      "repeat": "2",
+      "inputs": {
+        "velociraptor_version": "0.77.3",
+        "triage_targets_sha256": "71e36f9cc06ae3bab0414988189e856ddd89c258501e006ac9d8f1bd01621492",
+        "linux_triage_targets_sha256": "fc44566b6d553670421a1a58ffe57686f88c7d4b479734d88ac8ae438fcb4cc3",
+        "last_build_timestamp": "2026-11-06T16:18:11Z"
+      },
+      "runner_image_version": "20261101.353.1",
+      "valid": true,
+      "runs": [
+        {
+          "valid": true,
+          "variant": "parsers",
+          "parser_rows": {
+            "Windows.Forensics.SRUM": 857,
+            "Windows.Forensics.Bam": 11,
+            "Windows.Registry.UserAssist": 4,
+            "Windows.Registry.AppCompatCache": 662,
+            "Windows.Forensics.Amcache": 5648
+          },
+          "parser_result_bytes": {
+            "Windows.Forensics.SRUM": 527178,
+            "Windows.Forensics.Bam": 1929,
+            "Windows.Registry.UserAssist": 625,
+            "Windows.Registry.AppCompatCache": 103259,
+            "Windows.Forensics.Amcache": 2106355
+          },
+          "collector_sha256": "e7e4664f80d25a59d0bda23e02c94c0afc213b95e2f6f4060f3706cc34149e61",
+          "result_rows": 12451,
+          "pair": 1,
+          "validation_and_cleanup_seconds": 9.168813099999994,
+          "verified_triage_uploads": 759,
+          "zip_bytes": 458445602,
+          "execution_seconds": 87.82286
+        }
+      ],
+      "runner_image": "win22",
+      "logical_processors": 4,
+      "validator_revision": "eebda5037e7c91f8408cc10470da404ab44e3a64",
+      "methodology": "One first collection on a fresh hosted runner; process wall time excludes ZIP validation and cleanup."
+    },
+    {
+      "repeat": "3",
+      "validator_revision": "eebda5037e7c91f8408cc10470da404ab44e3a64",
+      "methodology": "One first collection on a fresh hosted runner; process wall time excludes ZIP validation and cleanup.",
+      "run_id": "42251038897",
+      "runner_image": "win22",
+      "inputs": {
+        "velociraptor_version": "0.77.3",
+        "triage_targets_sha256": "71e36f9cc06ae3bab0414988189e856ddd89c258501e006ac9d8f1bd01621492",
+        "linux_triage_targets_sha256": "fc44566b6d553670421a1a58ffe57686f88c7d4b479734d88ac8ae438fcb4cc3",
+        "last_build_timestamp": "2026-11-06T16:18:11Z"
+      },
+      "logical_processors": 4,
+      "commit": "c5ef6a8397a316e0dcdf5a0cbce1bfcbf5a6d482",
+      "mode": "parsers",
+      "runs": [
+        {
+          "collector_sha256": "e7e4664f80d25a59d0bda23e02c94c0afc213b95e2f6f4060f3706cc34149e61",
+          "validation_and_cleanup_seconds": 11.873133299999992,
+          "valid": true,
+          "zip_bytes": 462426928,
+          "parser_result_bytes": {
+            "Windows.Forensics.SRUM": 527178,
+            "Windows.Forensics.Bam": 1929,
+            "Windows.Registry.UserAssist": 625,
+            "Windows.Registry.AppCompatCache": 103259,
+            "Windows.Forensics.Amcache": 2106355
+          },
+          "verified_triage_uploads": 760,
+          "execution_seconds": 123.3214775,
+          "variant": "parsers",
+          "result_rows": 12461,
+          "pair": 1,
+          "parser_rows": {
+            "Windows.Forensics.SRUM": 857,
+            "Windows.Forensics.Bam": 11,
+            "Windows.Registry.UserAssist": 4,
+            "Windows.Registry.AppCompatCache": 662,
+            "Windows.Forensics.Amcache": 5648
+          }
+        }
+      ],
+      "runner_image_version": "20261101.353.1",
+      "valid": true
+    }
+  ]
+}

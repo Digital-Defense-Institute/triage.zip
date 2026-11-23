@@ -8,6 +8,21 @@ Artifacts:
     HighLevelTargets: '["_KapeTriage", "_BasicCollection", "_Live", "_SANS_Triage"]'
  Windows.Sysinternals.Autoruns:
     All: 'Y'
+ # Preserve raw targets above and provide native JSONL for downstream analysis.
+ # Prefetch is already parsed by _Live -> PrefetchBinaries_Executables.
+ Windows.Forensics.SRUM: {}
+ Windows.Forensics.Bam: {}
+ Windows.Registry.UserAssist: {}
+ Windows.Registry.AppCompatCache: {}
+ Windows.Forensics.Amcache: {}
+ # Preserve raw Mark-of-the-Web streams without reading the parent files.
+ Generic.Collectors.File:
+    Root: 'C:'
+    Accessor: ntfs
+    MaxFileSize: '65536'
+    collectionSpec: |
+      Glob
+      Users/*/**20/*:Zone.Identifier
 
 # Can be ZIP, GCS, S3, Azure, SMBShare, SFTP
 Target: ZIP

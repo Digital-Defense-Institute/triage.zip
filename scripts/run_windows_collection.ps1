@@ -3,7 +3,10 @@ param(
     [string]$Collector,
     [string]$OutputDirectory,
     [string]$ReportDirectory,
-    [ValidateRange(1, 7200)][int]$TimeoutSeconds = 2700
+    [ValidateRange(1, 7200)][int]$TimeoutSeconds = 2700,
+    [switch]$QualifyWindowsEvidence,
+    [switch]$ValidateWindowsEvidence,
+    [string]$MotwSeeds
 )
 
 Set-StrictMode -Version Latest
@@ -46,6 +49,11 @@ $principal = [Security.Principal.WindowsPrincipal]::new($identity)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw 'Collection validation requires Administrator privileges.'
 }
+if ($QualifyWindowsEvidence) {
+    & (Join-Path $PSScriptRoot 'qualify_windows_collection.ps1') -Collector $Collector `
+        -OutputDirectory $OutputDirectory -ReportDirectory $ReportDirectory -TimeoutSeconds $TimeoutSeconds
+    exit $LASTEXITCODE
+}
 
 $Collector = (Resolve-Path -LiteralPath $Collector).Path
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
@@ -64,10 +72,13 @@ try {
     $localCollector = Join-Path $OutputDirectory 'Velociraptor_Triage_Collector.exe'
     Copy-Item -LiteralPath $Collector -Destination $localCollector
     $report.stage = 'execution'
+    $execution = [Diagnostics.Stopwatch]::StartNew()
     # No arguments: use the exact embedded production collection configuration.
     Invoke-CollectorProcess -Executable $localCollector -WorkingDirectory $OutputDirectory `
         -Timeout $TimeoutSeconds -Stdout (Join-Path $OutputDirectory 'process.stdout.log') `
         -Stderr (Join-Path $OutputDirectory 'process.stderr.log')
+    $execution.Stop()
+    $executionSeconds = $execution.Elapsed.TotalSeconds
     if ((Get-FileHash -Algorithm SHA256 -LiteralPath $localCollector).Hash.ToLowerInvariant() -ne $hash) {
         throw 'Collector bytes changed during execution.'
     }
@@ -80,11 +91,15 @@ try {
         $collections[0].FullName --output $factsPath
     if ($LASTEXITCODE -ne 0) { throw 'Windows source metadata checks failed.' }
     $report.stage = 'container-validation'
-    & python -B (Join-Path $PSScriptRoot 'validate_windows_collection.py') `
-        $collections[0].FullName --report $reportPath --live-source-facts $factsPath
+    $validatorArgs = @('-B', (Join-Path $PSScriptRoot 'validate_windows_collection.py'),
+        $collections[0].FullName, '--report', $reportPath, '--live-source-facts', $factsPath)
+    if ($ValidateWindowsEvidence) { $validatorArgs += '--windows-evidence' }
+    if ($MotwSeeds) { $validatorArgs += @('--motw-seeds', $MotwSeeds) }
+    & python @validatorArgs
     $validatorExit = $LASTEXITCODE
     $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json -AsHashtable
     $report.collector_sha256 = $hash
+    $report.execution_seconds = $executionSeconds
     $report.stage = 'container-validation'
     if ($validatorExit -ne 0) { throw 'Collection container validation failed.' }
     if ($report.valid -ne $true) { throw 'Collection validator did not report success.' }
