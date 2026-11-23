@@ -93,6 +93,13 @@ Parsed Prefetch is already provided by `_Live`, under
 `Windows.Triage.Targets/PrefetchBinaries_Executables`; downstream tools must read
 that result source rather than assuming a separate Prefetch artifact was run.
 
+These parsers read current endpoint sources independently of raw acquisition.
+The triage artifact's three-day VSS setting does not extend their coverage to
+historical hives or snapshots. SRUM selects four provider tables; optional
+ID-map output is off. Amcache selects its default file/application sources,
+not every driver/device inventory. AppCompatCache modification times and
+Amcache inventory presence are not, by themselves, execution timestamps.
+
 Parser output depends on the available evidence and Windows version. Inspect
 collection logs and retain raw files for independent parsing when needed. SRUM
 network byte counts do not establish the volume of stolen data, and BAM's
@@ -115,10 +122,19 @@ Look for stream paths ending in `:Zone.Identifier` in
 them into separate columns. All zones are preserved. A missing stream does not
 establish that a file was created locally, since download and extraction tools
 do not always create or preserve MOTW.
+Reported timestamps belong to the underlying file record; they are not separate
+creation timestamps for the named stream.
 
 CI tests this configuration against a disposable copy of upstream's NTFS fixture,
 including exact bytes, metadata, size boundaries, unrelated streams, and paths
 outside user profiles. This does not substitute for Windows endpoint validation.
+
+The hosted Windows check also runs the exact packaged collector against benign
+seeded streams and synthetic directory trees, verifies acquired bytes and hashes,
+and reports parser counts by source. Profiles outside `C:\Users`, streams deeper
+than the depth limit, and historical streams in VSS remain outside this pass.
+Small streams do not imply cheap traversal; qualification timings describe only
+the tested synthetic workloads and runner image.
 
 The remaining staging-file and collection-exclusion work is tracked in
 [the issue 20 upstream follow-up](docs/issue20-upstream.md). It requires upstream

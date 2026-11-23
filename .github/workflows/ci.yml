@@ -296,7 +296,8 @@ jobs:
           $before = (Get-FileHash -Algorithm SHA256 -LiteralPath $collector).Hash.ToLowerInvariant()
           ./scripts/run_windows_collection.ps1 -Collector $collector `
             -OutputDirectory "$env:RUNNER_TEMP/windows-collection" `
-            -ReportDirectory "$env:GITHUB_WORKSPACE/windows-validation" -TimeoutSeconds 2700
+            -ReportDirectory "$env:GITHUB_WORKSPACE/windows-validation" -TimeoutSeconds 2700 `
+            -QualifyWindowsEvidence
           if ($LASTEXITCODE -ne 0) { throw 'Windows collection validation failed' }
           $report = Get-Content windows-validation/validation-report.json -Raw | ConvertFrom-Json
           if ($report.valid -ne $true -or $report.collector_sha256 -ne $before) {
